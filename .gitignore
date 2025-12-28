@@ -1,0 +1,6 @@
+build/
+*.dmg
+dmg_staging/
+.DS_Store
+*.xcuserstate
+xcuserdata/

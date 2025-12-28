@@ -23,6 +23,19 @@ class PersistanceManager{
     public var powerMode: String = "normal" // "normal", "low", "high"
     public var calibrationModeEnabled: Bool = false
     public var intelModeEnabled: Bool = false
+
+    // General Settings (Unlocked)
+    public var showDockIcon: Bool = false
+    public var hardwareBatteryPercentage: Bool = false
+    public var reduceTransparency: Bool = false
+    public var appearanceMode: Int = 0 // 0: System, 1: Light, 2: Dark
+    
+    // LED / MagSafe Settings
+    public var indicateChargeLimit: Bool = false
+    public var blinkOrangeDischarge: Bool = false
+    
+    // Onboarding
+    public var hasCompletedOnboarding: Bool = false
     
     public func load(){
         launchOnLogin = UserDefaults.standard.bool(forKey: "launchOnLogin")
@@ -41,6 +54,18 @@ class PersistanceManager{
         powerMode = UserDefaults.standard.string(forKey: "powerMode") ?? "normal"
         calibrationModeEnabled = UserDefaults.standard.bool(forKey: "calibrationModeEnabled")
         intelModeEnabled = UserDefaults.standard.bool(forKey: "intelModeEnabled")
+        
+        // Load General Settings
+        showDockIcon = UserDefaults.standard.bool(forKey: "showDockIcon")
+        hardwareBatteryPercentage = UserDefaults.standard.bool(forKey: "hardwareBatteryPercentage")
+        reduceTransparency = UserDefaults.standard.bool(forKey: "reduceTransparency")
+        appearanceMode = UserDefaults.standard.integer(forKey: "appearanceMode")
+        
+        // Load LED Settings
+        indicateChargeLimit = UserDefaults.standard.bool(forKey: "indicateChargeLimit")
+        blinkOrangeDischarge = UserDefaults.standard.bool(forKey: "blinkOrangeDischarge")
+        
+        hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     }
     
     public func save(){
@@ -56,5 +81,17 @@ class PersistanceManager{
         UserDefaults.standard.set(powerMode, forKey: "powerMode")
         UserDefaults.standard.set(calibrationModeEnabled, forKey: "calibrationModeEnabled")
         UserDefaults.standard.set(intelModeEnabled, forKey: "intelModeEnabled")
+        
+        // Save General Settings
+        UserDefaults.standard.set(showDockIcon, forKey: "showDockIcon")
+        UserDefaults.standard.set(hardwareBatteryPercentage, forKey: "hardwareBatteryPercentage")
+        UserDefaults.standard.set(reduceTransparency, forKey: "reduceTransparency")
+        UserDefaults.standard.set(appearanceMode, forKey: "appearanceMode")
+        
+        // Save LED Settings
+        UserDefaults.standard.set(indicateChargeLimit, forKey: "indicateChargeLimit")
+        UserDefaults.standard.set(blinkOrangeDischarge, forKey: "blinkOrangeDischarge")
+        
+        UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
     }
 }

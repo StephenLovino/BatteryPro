@@ -41,17 +41,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         print("=== BatteryPro Starting ===")
         
+        print("Loading persistence data...")
+        PersistanceManager.instance.load() // Load early for correct init state
+        
         print("Creating ContentView...")
         let contentView = ContentView()
         print("ContentView created")
         
         print("Creating popover...")
         let popover = NSPopover()
-        popover.contentSize = NSSize(width: 560, height: 140)
+        popover.contentSize = NSSize(width: 450, height: 140)
         popover.behavior = .transient
         popover.animates = true
         let hostingController = NSHostingController(rootView: contentView)
-        hostingController.view.frame = NSRect(x: 0, y: 0, width: 560, height: 140)
+        hostingController.view.frame = NSRect(x: 0, y: 0, width: 450, height: 140)
         popover.contentViewController = hostingController
         self.popover = popover
         print("Popover created")
@@ -87,6 +90,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
         }
 
+        // Listen for dock icon visibility updates
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("UpdateDockIconVisibility"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            self.updateDockIcon()
+        }
+        
         // Listen for open main window requests
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name("OpenMainWindow"),
@@ -125,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         
         print("Loading persistence data...")
         // Load persistence data first
-        PersistanceManager.instance.load()
+        // PersistanceManager.instance.load() // Already loaded at start
         print("Persistence loaded")
         
         print("Loading SMC presenter value...")
@@ -237,7 +250,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
-        NSApp.setActivationPolicy(.accessory)
+        if !PersistanceManager.instance.showDockIcon {
+             NSApp.setActivationPolicy(.accessory)
+        }
+    }
+    
+    func updateDockIcon() {
+        if PersistanceManager.instance.showDockIcon {
+             NSApp.setActivationPolicy(.regular)
+        } else {
+             // Only hide if window is NOT open. If window is open, we need dock icon.
+             if window == nil || !window.isVisible {
+                 NSApp.setActivationPolicy(.accessory)
+             }
+        }
     }
     
     // MARK: - NSWindowDelegate

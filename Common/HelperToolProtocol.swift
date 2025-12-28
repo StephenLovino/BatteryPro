@@ -29,5 +29,8 @@ let helperVersion: String = "11" //for some reason the integrated version check 
     func createAssertion(assertion:String, withReply reply: @escaping (IOPMAssertionID) -> Void)
     func releaseAssertion(assertionID:IOPMAssertionID)
     func setResetVal(key:String, value: UInt8)
+    
+    // Low Power Mode Control
+    func setLowPowerMode(enabled: Bool, withReply reply: @escaping (Bool, String) -> Void)
 
 }

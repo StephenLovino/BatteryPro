@@ -31,13 +31,15 @@ private struct ModernButtonStyle: ButtonStyle {
 }
 
 private struct IconButtonStyle: ButtonStyle {
+    var isActive: Bool = false
+    
     func makeBody(configuration: Self.Configuration) -> some View {
         configuration.label
-            .foregroundColor(.primary)
+            .foregroundColor(isActive ? .white : .primary)
             .padding(10)
             .background(
                 Circle()
-                    .fill(Color(.controlBackgroundColor))
+                    .fill(isActive ? Theme.Colors.accent : Color(.controlBackgroundColor))
             )
             .overlay(
                 Circle()
@@ -47,8 +49,6 @@ private struct IconButtonStyle: ButtonStyle {
             .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
-
-// ... (Restoring Settings struct) ...
 
 private struct Settings: View {
     @State private var launchAtLogin: Bool
@@ -74,7 +74,7 @@ private struct Settings: View {
                 Spacer()
                 Button(action: { showSettings = false }) {
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
+                    .foregroundColor(.secondary)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -143,7 +143,7 @@ private struct Settings: View {
             .padding(.horizontal)
             .padding(.bottom)
         }
-        .frame(width: 560, height: 400)
+        .frame(width: 450, height: 400)
         .background(Color(.windowBackgroundColor))
     }
 
@@ -169,7 +169,7 @@ struct ContentView: View {
             if showSettings {
                 Settings(showSettings: $showSettings)
                     .onAppear {
-                        NotificationCenter.default.post(name: NSNotification.Name("UpdatePopoverSize"), object: nil, userInfo: ["width": 560, "height": 140])
+                        NotificationCenter.default.post(name: NSNotification.Name("UpdatePopoverSize"), object: nil, userInfo: ["width": 450, "height": 140])
                     }
             } else {
                 VStack(spacing: 0) {
@@ -250,6 +250,16 @@ struct ContentView: View {
                         
                         Spacer()
                         
+                        // Manual Bypass Button
+                        Button(action: {
+                            presenter.setBypass(enabled: !presenter.bypassEnabled)
+                        }) {
+                            Image(systemName: "powerplug.fill")
+                                .font(.system(size: 14))
+                        }
+                        .buttonStyle(IconButtonStyle(isActive: presenter.bypassEnabled))
+                        .help("Manual Bypass")
+                        
                         // Full Window button (4-square grid icon)
                         Button(action: {
                             if let appDelegate = NSApplication.shared.delegate as? AppDelegate {
@@ -291,16 +301,14 @@ struct ContentView: View {
                     .padding(.horizontal, 10)
                     .padding(.bottom, 8)
                 }
-                .frame(width: 560, height: 110)
+                .frame(width: 450, height: 110)
                 .onAppear {
-                    NotificationCenter.default.post(name: NSNotification.Name("UpdatePopoverSize"), object: nil, userInfo: ["width": 560, "height": 140])
+                    NotificationCenter.default.post(name: NSNotification.Name("UpdatePopoverSize"), object: nil, userInfo: ["width": 450, "height": 140])
                 }
             }
         }
     }
 }
-
-// ... (Rest of file) ...
 
 public final class SMCPresenter: ObservableObject, HelperDelegate {
 

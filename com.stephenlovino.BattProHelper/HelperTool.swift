@@ -280,4 +280,34 @@ final class HelperTool: NSObject, HelperToolProtocol {
         modifiedKeys.removeAll()
         openAssertions.removeAll()
     }
+    
+    func setLowPowerMode(enabled: Bool, withReply reply: @escaping (Bool, String) -> Void) {
+        let value = enabled ? "1" : "0"
+        let task = Process()
+        task.launchPath = "/usr/bin/pmset"
+        task.arguments = ["-a", "lowpowermode", value]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            
+            if task.terminationStatus == 0 {
+                print("Successfully set Low Power Mode to \(enabled)")
+                reply(true, "Success")
+            } else {
+                print("Failed to set Low Power Mode: \(output)")
+                reply(false, "Failed: \(output)")
+            }
+        } catch {
+            print("Error executing pmset: \(error)")
+            reply(false, "Error: \(error.localizedDescription)")
+        }
+    }
 }

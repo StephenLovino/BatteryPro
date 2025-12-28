@@ -12,12 +12,21 @@ import IOKit.ps
 // MARK: - Theme (Merged for Project Compatibility)
 struct Theme {
     struct Colors {
-        static let background = Color(hex: "1C1C1E")
-        static let secondaryBackground = Color(hex: "2C2C2E")
-        static let tertiaryBackground = Color(hex: "3A3A3C")
         
-        static let textPrimary = Color.white
-        static let textSecondary = Color(hex: "8E8E93")
+        static func dynamicColor(light: String, dark: String) -> Color {
+            return Color(NSColor(name: nil, dynamicProvider: { appearance in
+                return appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? NSColor(hex: dark) : NSColor(hex: light)
+            }))
+        }
+    
+        // Adaptive Backgrounds
+        static let background = dynamicColor(light: "F2F2F7", dark: "1C1C1E") // System Gray 6 (Light) vs Dark
+        static let secondaryBackground = dynamicColor(light: "FFFFFF", dark: "2C2C2E") // White (Light) vs Dark Gray
+        static let tertiaryBackground = dynamicColor(light: "E5E5EA", dark: "3A3A3C") // System Gray 5
+        
+        // Adaptive Text
+        static let textPrimary = dynamicColor(light: "000000", dark: "FFFFFF") // Black vs White
+        static let textSecondary = Color(hex: "8E8E93") // Gray is usually fine for both, or we can tweak
         
         static let accent = Color(hex: "00D2A6") // Vibrant Mint
         static let lockIcon = Color(hex: "8E8E93")
@@ -27,10 +36,17 @@ struct Theme {
         
         // Gradient for "Locked" cards or special effects
         static let cardGradient = LinearGradient(
-            gradient: Gradient(colors: [Color(hex: "2C2C2E"), Color(hex: "3A3A3C")]),
+            gradient: Gradient(colors: [
+                dynamicColor(light: "FFFFFF", dark: "2C2C2E"),
+                dynamicColor(light: "F2F2F7", dark: "3A3A3C")
+            ]),
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+        
+        // Card Styling
+        static let cardBorder = dynamicColor(light: "0000000D", dark: "FFFFFF1A") // Black 5% vs White 10%
+        static let cardShadow = dynamicColor(light: "0000001A", dark: "0000004D") // Black 10% vs Black 30%
     }
     
     struct Layout {
@@ -41,6 +57,7 @@ struct Theme {
     
     struct Fonts {
         static let header = Font.system(size: 24, weight: .bold, design: .default)
+        static let title = Font.system(size: 20, weight: .bold, design: .default)
         static let subheadline = Font.system(size: 18, weight: .semibold, design: .default)
         static let body = Font.system(size: 14, weight: .regular, design: .default)
         static let caption = Font.system(size: 12, weight: .medium, design: .default)
@@ -72,6 +89,33 @@ extension Color {
             green: Double(g) / 255,
             blue: Double(b) / 255,
             opacity: Double(a) / 255
+        )
+    }
+}
+
+// Extension to allow Hex color initialization for NSColor
+extension NSColor {
+    convenience init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (1, 1, 1, 0)
+        }
+
+        self.init(
+            srgbRed: Double(r) / 255,
+            green: Double(g) / 255,
+            blue: Double(b) / 255,
+            alpha: Double(a) / 255
         )
     }
 }
@@ -111,28 +155,13 @@ struct EmbossedDivider: View {
 struct CardModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background(
-                ZStack {
-                    VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
-                    Color(hex: "2C2C2E").opacity(0.4) // Semi-transparent tint
-                }
-            )
+            .background(Theme.Colors.secondaryBackground)
             .cornerRadius(Theme.Layout.cornerRadius)
             .overlay(
-                 RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
-                     .stroke(
-                         LinearGradient(
-                             gradient: Gradient(colors: [
-                                 Color.white.opacity(0.15),
-                                 Color.white.opacity(0.02)
-                             ]),
-                             startPoint: .topLeading,
-                             endPoint: .bottomTrailing
-                         ),
-                         lineWidth: 1
-                     )
+                RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                    .stroke(Theme.Colors.cardBorder, lineWidth: 1)
             )
-            .shadow(color: Color.black.opacity(0.4), radius: 8, x: 0, y: 4)
+            .shadow(color: Theme.Colors.cardShadow, radius: 8, x: 0, y: 4)
     }
 }
 
@@ -145,12 +174,13 @@ extension View {
 // MARK: - Main Structure
 struct MainWindowView: View {
     @State private var selectedSection: NavigationSection = .dashboard
+    @State private var onboardingIndex: Int = -1 // -1 means inactive
     
     var body: some View {
-        HStack(spacing: 0) {
+        ZStack {
+            HStack(spacing: 0) {
             // Sidebar
-            // Sidebar
-            SidebarView(selectedSection: $selectedSection)
+            SidebarView(selectedSection: $selectedSection, activeOnboardingSection: onboardingIndex >= 0 ? onboardingSteps[onboardingIndex].section : nil)
                 .frame(width: Theme.Layout.sidebarWidth)
                 .background(
                     VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
@@ -205,14 +235,55 @@ struct MainWindowView: View {
                     .padding()
                 }
             }
+        } // End HStack
+            
+        // Onboarding Overlay
+        if onboardingIndex >= 0 && onboardingIndex < onboardingSteps.count {
+                OnboardingOverlay(
+                    step: onboardingSteps[onboardingIndex],
+                    totalSteps: onboardingSteps.count,
+                    currentIndex: onboardingIndex,
+                    onNext: {
+                        if onboardingIndex < onboardingSteps.count - 1 {
+                            onboardingIndex += 1
+                            selectedSection = onboardingSteps[onboardingIndex].section
+                        } else {
+                            // Finish
+                            onboardingIndex = -1
+                            PersistanceManager.instance.hasCompletedOnboarding = true
+                            PersistanceManager.instance.save()
+                        }
+                    },
+                    onSkip: {
+                        onboardingIndex = -1
+                        PersistanceManager.instance.hasCompletedOnboarding = true
+                        PersistanceManager.instance.save()
+                    }
+                )
+            }
         }
         .frame(minWidth: 1000, minHeight: 650)
+        .onAppear {
+            // Check if onboarding needed
+            if !PersistanceManager.instance.hasCompletedOnboarding {
+                // Start onboarding after a slight delay to let UI settle
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    self.onboardingIndex = 0
+                    self.selectedSection = onboardingSteps[0].section
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("StartOnboarding"))) { _ in
+            self.onboardingIndex = 0
+            self.selectedSection = onboardingSteps[0].section
+        }
     }
 }
 
 // MARK: - Sidebar View
 struct SidebarView: View {
     @Binding var selectedSection: NavigationSection
+    var activeOnboardingSection: NavigationSection? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -232,6 +303,8 @@ struct SidebarView: View {
                 .background(selectedSection == .dashboard ? Theme.Colors.accent : Color.clear)
                 .foregroundColor(selectedSection == .dashboard ? .white : Theme.Colors.textSecondary)
                 .cornerRadius(8)
+                .opacity((activeOnboardingSection != nil && activeOnboardingSection != .dashboard) ? 0.3 : 1.0)
+                .grayscale((activeOnboardingSection != nil && activeOnboardingSection != .dashboard) ? 1.0 : 0.0)
             }
             .buttonStyle(PlainButtonStyle())
             .padding(.horizontal, 16)
@@ -243,15 +316,15 @@ struct SidebarView: View {
                     
                     MenuGroup(title: "Battery Care", items: [
                         .chargeControl, .sleepBehavior, .energyUse
-                    ], selected: $selectedSection)
+                    ], selected: $selectedSection, activeOnboardingSection: activeOnboardingSection)
                     
                     MenuGroup(title: "Automations", items: [
                         .schedule, .shortcuts
-                    ], selected: $selectedSection)
+                    ], selected: $selectedSection, activeOnboardingSection: activeOnboardingSection)
                     
                     MenuGroup(title: "Appearance", items: [
                         .popover, .menubar, .other
-                    ], selected: $selectedSection)
+                    ], selected: $selectedSection, activeOnboardingSection: activeOnboardingSection)
                     
                 }
                 .padding(.horizontal, 16)
@@ -282,6 +355,7 @@ struct MenuGroup: View {
     let title: String
     let items: [NavigationSection]
     @Binding var selected: NavigationSection
+    var activeOnboardingSection: NavigationSection? = nil
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -303,19 +377,11 @@ struct MenuGroup: View {
                     .padding(.vertical, 6)
                     .padding(.horizontal, 8)
                     .contentShape(Rectangle())
-                    .background(selected == item ? Theme.Colors.accent.opacity(0.1) : Color.clear) // Subtle highlight like screenshot? Or full accent? 
-                    // Screenshot shows text is WHITE when selected, implying dark/strong background? 
-                    // Screenshot shows "Dashboard" is blue text. Wait.
-                    // User says "blue sidebar highlight stays only to the dashboard".
-                    // Screenshot shows "Sleep Behavior" is selected (text is white-ish? Hard to see). 
-                    // Let's look at the Dashboard button code again.
-                    // .background(selected == .dashboard ? Theme.Colors.accent : Color.clear) -> Blue Background.
-                    // .foregroundColor(selected == .dashboard ? .white : Theme.Colors.accent) -> White Text on Blue.
-                    
-                    // So for MenuGroup items, I need:
                     .background(selected == item ? Theme.Colors.accent : Color.clear)
                     .foregroundColor(selected == item ? .white : Theme.Colors.textSecondary)
                     .cornerRadius(6)
+                    .opacity((activeOnboardingSection != nil && activeOnboardingSection != item) ? 0.3 : 1.0)
+                    .grayscale((activeOnboardingSection != nil && activeOnboardingSection != item) ? 1.0 : 0.0)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -341,83 +407,60 @@ struct DashboardView: View {
                 // -- Row 1 --
                 // 1. Battery Specs
                 DashboardWidget(title: "Battery Specs", icon: "bolt.fill") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack { Text("Manufacturer:"); Spacer(); Text(batteryInfo.manufacturer) }
-                        HStack { Text("Serial:"); Spacer(); Text(batteryInfo.serialNumber) }
-                        HStack { Text("Manufactured:"); Spacer(); Text(batteryInfo.manufactureDate) }
-                        HStack { Text("Voltage:"); Spacer(); Text(String(format: "%.2f V", batteryInfo.voltage)) }
+                    VStack(spacing: 8) {
+                        LabelValueRow(label: "Manufacturer:", value: batteryInfo.manufacturer)
+                        LabelValueRow(label: "Serial:", value: batteryInfo.serialNumber)
+                        LabelValueRow(label: "Manufactured:", value: batteryInfo.manufactureDate)
+                        LabelValueRow(label: "Voltage:", value: String(format: "%.2f V", batteryInfo.voltage))
                     }
-                    .font(Theme.Fonts.caption)
-                    .foregroundColor(Theme.Colors.textSecondary)
                 }
                 
-                // 2. Battery Health (Unlocked - Main Info)
+                // 2. Battery Health
                 DashboardWidget(title: "Battery Health", icon: "heart.fill") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Text("Design Capacity:")
-                            Spacer()
-                            Text("\(batteryInfo.designCapacity) mAh")
-                        }
-                        HStack {
-                            Text("Maximum Capacity:")
-                            Spacer()
-                            Text("\(batteryInfo.maxCapacity) mAh")
-                        }
-                        HStack {
-                            Text("Cycle Count:")
-                            Spacer()
-                            Text("\(batteryInfo.cycleCount)")
-                        }
-                        HStack {
-                            Text("Condition:")
-                            Spacer()
-                            Text(batteryInfo.condition)
-                                .foregroundColor(batteryInfo.condition == "Normal" ? .green : .orange)
-                        }
+                    VStack(spacing: 8) {
+                        LabelValueRow(label: "Design Cap:", value: "\(batteryInfo.designCapacity) mAh")
+                        LabelValueRow(label: "Max Cap:", value: "\(batteryInfo.maxCapacity) mAh")
+                        LabelValueRow(label: "Cycles:", value: "\(batteryInfo.cycleCount)")
+                        LabelValueRow(label: "Condition:", value: batteryInfo.condition, valueColor: batteryInfo.condition == "Normal" ? .green : .orange)
                     }
-                    .font(.custom("SF Pro Text", size: 12))
-                    .foregroundColor(Theme.Colors.textSecondary)
                 }
                 
                 // 3. Power Adapter Specs
-                DashboardWidget(title: "Power Adapter Specs", icon: "powerplug.fill") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(batteryInfo.adapterName)
-                           .font(Theme.Fonts.body)
-                           .foregroundColor(.white)
-                           .lineLimit(1)
-                        HStack { Text("Wattage:"); Spacer(); Text("\(batteryInfo.adapterWattage)W") }
-                        HStack { Text("Connected:"); Spacer(); Text(batteryInfo.adapterConnected ? "Yes" : "No") }
-                        HStack { Text("Amperage:"); Spacer(); Text(String(format: "%.2f A", batteryInfo.amperage)) }
-                   }
-                   .font(Theme.Fonts.caption)
-                   .foregroundColor(Theme.Colors.textSecondary)
+                DashboardWidget(title: "Adapter Specs", icon: "powerplug.fill") {
+                    VStack(alignment: .leading, spacing: 8) {
+                         Text(batteryInfo.adapterConnected ? "Connected" : "Not Connected")
+                             .font(Theme.Fonts.body)
+                             .fontWeight(.medium)
+                             .foregroundColor(Theme.Colors.textPrimary)
+                         
+                         LabelValueRow(label: "Wattage:", value: "\(batteryInfo.adapterWattage)W")
+                         LabelValueRow(label: "Connected:", value: batteryInfo.adapterConnected ? "Yes" : "No")
+                         LabelValueRow(label: "Amperage:", value: String(format: "%.2f A", batteryInfo.amperage))
+                    }
                 }
                 
                 // -- Row 2 --
                 // 4. Battery Level
                 DashboardWidget(title: "Battery Level", icon: "battery.100") {
-                    VStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 4) {
                         let percentage = batteryInfo.maxCapacity > 0 ? Int((Double(batteryInfo.currentCapacity) / Double(batteryInfo.maxCapacity)) * 100) : 0
                         Text("\(percentage)%")
                             .font(Theme.Fonts.largeNumber)
-                            .foregroundColor(.white)
-                        // Time to full/empty
-                        Text(batteryInfo.isCharging ? "Time to full: \(batteryInfo.timeRemaining)" : "Time to empty: \(batteryInfo.timeRemaining)")
+                            .foregroundColor(Theme.Colors.textPrimary)
+                        
+                        Text(batteryInfo.isCharging ? "Full in: \(batteryInfo.timeRemaining)" : "Empty in: \(batteryInfo.timeRemaining)")
                             .font(Theme.Fonts.caption)
                             .foregroundColor(Theme.Colors.textSecondary)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 
-                // 5. Battery Cycles (Locked/Premium Promo?) 
-                // In screenshot it looks active but minimal. Let's make it a simple stat widget.
+                // 5. Battery Cycles
                 DashboardWidget(title: "Battery Cycles", icon: "arrow.triangle.2.circlepath") {
                      VStack(alignment: .leading) {
                         Text("\(batteryInfo.cycleCount) Cycles")
-                            .font(Theme.Fonts.subheadline)
-                            .foregroundColor(.white)
+                            .font(Theme.Fonts.title)
+                            .fontWeight(.bold)
+                            .foregroundColor(Theme.Colors.textPrimary)
                      }
                       .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -425,77 +468,65 @@ struct DashboardView: View {
                 // 6. Power Flow
                 DashboardWidget(title: "Power Flow", icon: "bolt.horizontal.fill") {
                      VStack(alignment: .leading, spacing: 4) {
-                         // Primary: Power Source
-                         Text(batteryInfo.adapterConnected ? "Power Adapter" : "Battery")
+                         Text("Battery")
                              .font(Theme.Fonts.subheadline)
                              .foregroundColor(Theme.Colors.textSecondary)
                          
-                         // Secondary: Status
-                         HStack {
-                             if batteryInfo.adapterConnected {
-                                 Text(batteryInfo.isCharging ? "Charging" : "Not Charging")
-                                     .font(Theme.Fonts.header)
-                                     .foregroundColor(batteryInfo.isCharging ? Theme.Colors.success : Theme.Colors.textPrimary)
-                             } else {
-                                 Text("Discharging")
-                                     .font(Theme.Fonts.header)
-                                     .foregroundColor(Theme.Colors.warning)
-                             }
-                         }
-                         
-                         // Metric: Power/Wattage
+                         Text(batteryInfo.isCharging ? "Charging" : (batteryInfo.adapterConnected ? "Plugged In" : "Discharging"))
+                             .font(Theme.Fonts.title)
+                             .fontWeight(.bold)
+                             .foregroundColor(batteryInfo.isCharging ? Theme.Colors.success : (batteryInfo.adapterConnected ? Theme.Colors.textPrimary : Theme.Colors.warning))
+                             .lineLimit(1)
+                             .minimumScaleFactor(0.8)
+
                          Text("\(String(format: "%.1f", abs(batteryInfo.powerConsumption))) W")
-                            .font(Theme.Fonts.subheadline)
+                            .font(Theme.Fonts.caption)
                             .foregroundColor(Theme.Colors.textSecondary)
                      }
-                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 
                 // -- Row 3 --
                 // 7. Battery Temperature
-                 DashboardWidget(title: "Battery Temperature", icon: "thermometer") {
+                 DashboardWidget(title: "Temperature", icon: "thermometer") {
                      VStack(alignment: .leading) {
                           Text(String(format: "%.1f °C", batteryInfo.temperature))
                             .font(Theme.Fonts.largeNumber)
-                            .foregroundColor(.white)
+                            .foregroundColor(Theme.Colors.textPrimary)
                      }
-                     .frame(maxWidth: .infinity, alignment: .leading)
                  }
 
                 // 8. Power Consumption
-                 DashboardWidget(title: "Power Consumption", icon: "bolt.circle") {
+                 DashboardWidget(title: "Consumption", icon: "bolt.circle") {
                       VStack(alignment: .leading) {
                           Text("\(String(format: "%.1f", batteryInfo.powerConsumption)) W")
                             .font(Theme.Fonts.largeNumber)
-                            .foregroundColor(.white)
+                            .foregroundColor(Theme.Colors.textPrimary)
                            Text("Time Remaining: --")
                             .font(Theme.Fonts.caption)
                             .foregroundColor(Theme.Colors.textSecondary)
-
-                     }
-                     .frame(maxWidth: .infinity, alignment: .leading)
+                      }
                  }
                  
-                // 9. Apps Using Significant Energy
+                // 9. Apps Using Energy
                 DashboardWidget(title: "Apps Using Energy", icon: "app.badge") {
-                     VStack(alignment: .leading, spacing: 8) {
+                     VStack(alignment: .leading, spacing: 6) {
                          if batteryInfo.significantEnergyApps.isEmpty {
                             Text("No apps using significant energy")
                                 .font(Theme.Fonts.caption)
                                 .foregroundColor(Theme.Colors.textSecondary)
                          } else {
-                             ForEach(batteryInfo.significantEnergyApps, id: \.self) { app in
+                             ForEach(batteryInfo.significantEnergyApps.prefix(3), id: \.self) { app in
                                  HStack {
                                     Image(systemName: "app.fill")
                                         .font(.system(size: 10))
+                                        .foregroundColor(Theme.Colors.textSecondary)
                                     Text(app)
+                                        .font(Theme.Fonts.caption)
+                                        .foregroundColor(Theme.Colors.textPrimary)
                                  }
                              }
                          }
                      }
-                     .font(Theme.Fonts.caption)
-                     .foregroundColor(Theme.Colors.textSecondary)
-                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                  
             }
@@ -519,11 +550,13 @@ struct DashboardView: View {
 struct DashboardWidget<Content: View>: View {
     let title: String
     let icon: String
+    let accentColor: Color?
     let content: Content
     
-    init(title: String, icon: String, @ViewBuilder content: () -> Content) {
+    init(title: String, icon: String, accentColor: Color? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.icon = icon
+        self.accentColor = accentColor
         self.content = content()
     }
     
@@ -531,21 +564,47 @@ struct DashboardWidget<Content: View>: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: icon)
-                    .foregroundColor(.white)
+                    .foregroundColor(accentColor ?? Theme.Colors.textPrimary)
+                    .font(.system(size: 18))
                 Text(title)
-                    .font(Theme.Fonts.subheadline) // Slightly smaller than header
+                    .font(Theme.Fonts.subheadline)
                     .fontWeight(.semibold)
-                    .foregroundColor(.white)
+                    .foregroundColor(Theme.Colors.textPrimary)
                 Spacer()
             }
+            .padding(.bottom, 4)
             
             content
         }
         .padding(Theme.Layout.padding)
-        .frame(height: 140) // Fixed height for grid uniformity
+        .frame(height: 140)
         .frame(maxWidth: .infinity)
         .background(Theme.Colors.secondaryBackground)
         .cornerRadius(Theme.Layout.cornerRadius)
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                .stroke(Theme.Colors.cardBorder, lineWidth: 1)
+        )
+        .shadow(color: Theme.Colors.cardShadow, radius: 8, x: 0, y: 4)
+    }
+}
+
+struct LabelValueRow: View {
+    let label: String
+    let value: String
+    var valueColor: Color? = nil
+    
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(Theme.Colors.textSecondary)
+            Spacer()
+            Text(value)
+                .fontWeight(.medium)
+                .foregroundColor(valueColor ?? Theme.Colors.textPrimary)
+                .lineLimit(1)
+        }
+        .font(Theme.Fonts.caption)
     }
 }
 
@@ -593,16 +652,16 @@ enum NavigationSection: String, CaseIterable {
     case dashboard = "Overview"
     case chargeControl = "Limit Manager"
     case sailingMode = "Drift Mode"
-    case heatProtection = "Thermal Guard"
+    case heatProtection = "Heat Protection"
     case powerModes = "Power Modes"
     case calibration = "Recalibration"
     case sleepBehavior = "Sleep Mode"
-    case energyUse = "Power Stats"
+    case energyUse = "Energy Monitor"
     case schedule = "Planner"
     case shortcuts = "Actions"
-    case popover = "Quick View"
-    case menubar = "Tray Icon"
-    case other = "Other"
+    case popover = "Mini Control"
+    case menubar = "Menu Bar"
+    case other = "General"
     case settings = "Settings"
     
     var icon: String {
@@ -777,7 +836,7 @@ class BatteryInfo: ObservableObject {
 
 
 struct OtherView: View {
-    @State private var appearanceMode = 0 // 0: System, 1: Light, 2: Dark
+    @State private var appearanceMode = PersistanceManager.instance.appearanceMode
     @State private var ledSetting = "Always On"
     
     var body: some View {
@@ -798,8 +857,15 @@ struct OtherView: View {
                             .foregroundColor(Theme.Colors.textSecondary)
                             .font(.caption)
                         Spacer()
-                        Image(systemName: "lock.fill")
-                            .foregroundColor(Theme.Colors.lockIcon)
+                        Toggle("", isOn: Binding(
+                            get: { PersistanceManager.instance.hardwareBatteryPercentage },
+                            set: { newValue in
+                                PersistanceManager.instance.hardwareBatteryPercentage = newValue
+                                PersistanceManager.instance.save()
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                     }
                     .padding(Theme.Layout.padding)
                     
@@ -815,8 +881,17 @@ struct OtherView: View {
                             .foregroundColor(Theme.Colors.textSecondary)
                             .font(.caption)
                         Spacer()
-                        Image(systemName: "lock.fill")
-                            .foregroundColor(Theme.Colors.lockIcon)
+                        Toggle("", isOn: Binding(
+                            get: { PersistanceManager.instance.showDockIcon },
+                            set: { newValue in
+                                PersistanceManager.instance.showDockIcon = newValue
+                                PersistanceManager.instance.save()
+                                // Notify AppDelegate to update dock icon immediately
+                                NotificationCenter.default.post(name: NSNotification.Name("UpdateDockIconVisibility"), object: nil)
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                     }
                     .padding(Theme.Layout.padding)
                     
@@ -832,8 +907,15 @@ struct OtherView: View {
                             .foregroundColor(Theme.Colors.textSecondary)
                             .font(.caption)
                         Spacer()
-                        Image(systemName: "lock.fill")
-                            .foregroundColor(Theme.Colors.lockIcon)
+                        Toggle("", isOn: Binding(
+                            get: { PersistanceManager.instance.reduceTransparency },
+                            set: { newValue in
+                                PersistanceManager.instance.reduceTransparency = newValue
+                                PersistanceManager.instance.save()
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                     }
                     .padding(Theme.Layout.padding)
                     
@@ -855,7 +937,11 @@ struct OtherView: View {
                                 Image(systemName: "circle.lefthalf.filled")
                                     .font(.title2)
                                     .foregroundColor(appearanceMode == 0 ? Theme.Colors.accent : Theme.Colors.textSecondary)
-                                    .onTapGesture { appearanceMode = 0 }
+                                    .onTapGesture { 
+                                        appearanceMode = 0 
+                                        PersistanceManager.instance.appearanceMode = 0
+                                        PersistanceManager.instance.save()
+                                    }
                                 Text("System")
                                     .font(.caption2)
                                     .foregroundColor(Theme.Colors.textSecondary)
@@ -866,7 +952,11 @@ struct OtherView: View {
                                 Image(systemName: "circle")
                                     .font(.title2)
                                     .foregroundColor(appearanceMode == 1 ? Theme.Colors.accent : Theme.Colors.textSecondary)
-                                    .onTapGesture { appearanceMode = 1 }
+                                    .onTapGesture { 
+                                        appearanceMode = 1 
+                                        PersistanceManager.instance.appearanceMode = 1
+                                        PersistanceManager.instance.save()
+                                    }
                                 Text("") // Spacing
                                     .font(.caption2)
                             }
@@ -876,7 +966,11 @@ struct OtherView: View {
                                 Image(systemName: "circle.fill")
                                     .font(.title2)
                                     .foregroundColor(appearanceMode == 2 ? Theme.Colors.accent : Theme.Colors.textSecondary)
-                                    .onTapGesture { appearanceMode = 2 }
+                                    .onTapGesture { 
+                                        appearanceMode = 2 
+                                        PersistanceManager.instance.appearanceMode = 2
+                                        PersistanceManager.instance.save()
+                                    }
                                 Text("")
                                     .font(.caption2)
                             }
@@ -927,8 +1021,15 @@ struct OtherView: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
                                 .font(.caption)
                             Spacer()
-                            Image(systemName: "lock.fill")
-                                .foregroundColor(Theme.Colors.lockIcon)
+                            Toggle("", isOn: Binding(
+                                get: { PersistanceManager.instance.indicateChargeLimit },
+                                set: { newValue in
+                                    PersistanceManager.instance.indicateChargeLimit = newValue
+                                    PersistanceManager.instance.save()
+                                }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                         }
                         .padding(Theme.Layout.padding)
                         
@@ -944,8 +1045,15 @@ struct OtherView: View {
                                 .foregroundColor(Theme.Colors.textSecondary)
                                 .font(.caption)
                             Spacer()
-                            Image(systemName: "lock.fill")
-                                .foregroundColor(Theme.Colors.lockIcon)
+                            Toggle("", isOn: Binding(
+                                get: { PersistanceManager.instance.blinkOrangeDischarge },
+                                set: { newValue in
+                                    PersistanceManager.instance.blinkOrangeDischarge = newValue
+                                    PersistanceManager.instance.save()
+                                }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                         }
                         .padding(Theme.Layout.padding)
                     }
@@ -1091,7 +1199,9 @@ struct SettingsView: View {
                     
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
-                            Button(action: {}) {
+                            Button(action: {
+                                NotificationCenter.default.post(name: NSNotification.Name("StartOnboarding"), object: nil)
+                            }) {
                                 Text("Onboarding")
                                     .font(.body)
                                     .frame(maxWidth: .infinity)
@@ -1184,7 +1294,7 @@ struct SettingsView: View {
                     HStack {
                         Image(systemName: "gearshape") // "sun.max"? Screenshot icon is weird sun/gear
                              .foregroundColor(Theme.Colors.textSecondary)
-                        Text("Other")
+                        Text("General")
                             .font(Theme.Fonts.subheadline)
                             .foregroundColor(Theme.Colors.textPrimary)
                     }
@@ -2076,7 +2186,12 @@ struct PowerModesView: View {
                                         powerMode = "normal"
                                         PersistanceManager.instance.powerMode = powerMode
                                         PersistanceManager.instance.save()
-                                        Helper.instance.setPowerMode(mode: powerMode)
+                                        Helper.instance.toggleLowPowerMode(enabled: false) { success in
+                                            if !success {
+                                                // Revert if failed?
+                                                print("Failed to disable Low Power Mode")
+                                            }
+                                        }
                                     }
                                 )
                                 
@@ -2089,20 +2204,11 @@ struct PowerModesView: View {
                                         powerMode = "low"
                                         PersistanceManager.instance.powerMode = powerMode
                                         PersistanceManager.instance.save()
-                                        Helper.instance.setPowerMode(mode: powerMode)
-                                    }
-                                )
-                                
-                                PowerModeButton(
-                                    title: "High Power",
-                                    description: "Maximum performance, may reduce battery life",
-                                    icon: "bolt.circle.fill",
-                                    isSelected: powerMode == "high",
-                                    action: {
-                                        powerMode = "high"
-                                        PersistanceManager.instance.powerMode = powerMode
-                                        PersistanceManager.instance.save()
-                                        Helper.instance.setPowerMode(mode: powerMode)
+                                        Helper.instance.toggleLowPowerMode(enabled: true) { success in
+                                            if !success {
+                                                print("Failed to enable Low Power Mode")
+                                            }
+                                        }
                                     }
                                 )
                             }
@@ -2116,6 +2222,12 @@ struct PowerModesView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(.windowBackgroundColor))
+        .onAppear {
+            // Sync with system state
+            Helper.instance.checkLowPowerMode { isEnabled in
+                self.powerMode = isEnabled ? "low" : "normal"
+            }
+        }
     }
 }
 
@@ -2589,5 +2701,120 @@ struct MenubarView: View {
                 .padding(.bottom, 40)
             }
         }
+    }
+}
+
+// MARK: - Onboarding Components
+
+struct OnboardingStep {
+    let title: String
+    let description: String
+    let section: NavigationSection
+}
+
+let onboardingSteps: [OnboardingStep] = [
+    OnboardingStep(
+        title: "Welcome to BatteryPro",
+        description: "Your ultimate tool for MacBook battery health and management. Let's take a quick tour.",
+        section: .dashboard
+    ),
+    OnboardingStep(
+        title: "Limit Manager",
+        description: "Set a maximum charge limit to extend your battery's lifespan. We recommend 80% for daily use.",
+        section: .chargeControl
+    ),
+    OnboardingStep(
+        title: "Energy Monitor",
+        description: "Track your real-time power usage and identify apps that are draining your battery.",
+        section: .energyUse
+    ),
+    OnboardingStep(
+        title: "Planner",
+        description: "Schedule when your battery tasks should run, like calibration or sailing mode.",
+        section: .schedule
+    ),
+    OnboardingStep(
+        title: "Mini Control",
+        description: "Customize the popover menu for quick access to essential controls from the menu bar.",
+        section: .popover
+    ),
+    OnboardingStep(
+        title: "You're All Set!",
+        description: "Explore the settings to customize BatteryPro to your liking. Enjoy!",
+        section: .dashboard
+    )
+]
+
+struct OnboardingOverlay: View {
+    let step: OnboardingStep
+    let totalSteps: Int
+    let currentIndex: Int
+    let onNext: () -> Void
+    let onSkip: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 24) {
+            // Icon for the section
+            Image(systemName: step.section.icon)
+                .font(.system(size: 32))
+                .foregroundColor(Theme.Colors.accent)
+                .frame(width: 40)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(step.title)
+                    .font(Theme.Fonts.subheadline)
+                    .bold()
+                    .foregroundColor(Theme.Colors.textPrimary)
+                
+                Text(step.description)
+                    .font(Theme.Fonts.body)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .lineLimit(2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            
+            // Actions
+            HStack(spacing: 16) {
+                Button(action: onSkip) {
+                    Text("Skip")
+                        .fontWeight(.medium)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                }
+                .buttonStyle(PlainButtonStyle())
+                
+                Button(action: onNext) {
+                    Text(currentIndex == totalSteps - 1 ? "Finish" : "Next")
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 8)
+                        .background(Theme.Colors.accent)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+            
+            // Progress Dots (Optional, or integrated)
+            // Let's keep them small below or next to buttons? 
+            // The user wanted "outside main app container", effectively a banner.
+            // Let's just keep the dots simple if needed, or omit for cleaner look.
+            // Screenshot shows dots below buttons. Let's put them in a VStack with buttons or just right side.
+        }
+        .padding(24)
+        .background(
+            ZStack {
+                VisualEffectView(material: .hudWindow, blendingMode: .withinWindow)
+                Theme.Colors.secondaryBackground.opacity(0.9)
+            }
+        )
+        .cornerRadius(16)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Theme.Colors.accent.opacity(0.3), lineWidth: 1)
+        )
+        .padding(24) // Float from edges
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom) // Align to bottom
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .zIndex(100)
     }
 }

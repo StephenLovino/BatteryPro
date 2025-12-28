@@ -475,12 +475,30 @@ final class Helper {
         }
     }
     
-    func setPowerMode(mode: String) {
-        // Set power mode: "low", "high", "normal"
-        // This would use IOKit or pmset commands
-        // For now, just log it
-        print("Setting power mode to: \(mode)")
-        // TODO: Implement actual power mode setting via IOKit or shell commands
+    func toggleLowPowerMode(enabled: Bool, completion: @escaping (Bool) -> Void) {
+        let helper = helperToolConnection.remoteObjectProxyWithErrorHandler {
+            let e = $0 as NSError
+            print("Remote proxy error \(e.code): \(e.localizedDescription)")
+            completion(false)
+        } as? HelperToolProtocol
+        
+        helper?.setLowPowerMode(enabled: enabled) { success, message in
+            DispatchQueue.main.async {
+                print("Low Power Mode toggle result: \(success) - \(message)")
+                completion(success)
+            }
+        }
+    }
+    
+    func checkLowPowerMode(completion: @escaping (Bool) -> Void) {
+        // We can check this directly via ProcessInfo
+        if #available(macOS 12.0, *) {
+            let isEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
+            completion(isEnabled)
+        } else {
+            // Low Power Mode API not available on macOS < 12
+            completion(false)
+        }
     }
     
     func startCalibration() {

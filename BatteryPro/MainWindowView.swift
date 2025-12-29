@@ -45,7 +45,9 @@ struct Theme {
         )
         
         // Card Styling
-        static let cardBorder = dynamicColor(light: "0000000D", dark: "FFFFFF1A") // Black 5% vs White 10%
+        // Card Styling
+        // Updated to use the Accent color with low opacity for a branded feel, instead of the previous white which caused issues
+        static let cardBorder = dynamicColor(light: "00D2A64D", dark: "00D2A64D") // Teal 30%
         static let cardShadow = dynamicColor(light: "0000001A", dark: "0000004D") // Black 10% vs Black 30%
     }
     
@@ -77,8 +79,8 @@ extension Color {
             (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
         case 6: // RGB (24-bit)
             (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // RGBA (32-bit) - CHANGED FROM ARGB TO RGBA TO FIX COLOR PARSING
+            (r, g, b, a) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
         default:
             (a, r, g, b) = (1, 1, 1, 0)
         }
@@ -105,8 +107,8 @@ extension NSColor {
             (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
         case 6: // RGB (24-bit)
             (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // RGBA (32-bit) - CHANGED FROM ARGB TO RGBA TO FIX COLOR PARSING
+            (r, g, b, a) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
         default:
             (a, r, g, b) = (1, 1, 1, 0)
         }

@@ -395,11 +395,32 @@ final class Helper {
     }
     
     func checkCharging(){
-        // Read as Byte (not UInt32) to match what we write
-        Helper.instance.SMCReadByte(key: "CH0B") { value in
-            self.chargeInhibited = !(value == 00)
-            print("CHARGE INHIBITED: "+String(self.chargeInhibited))
+        // Use the working key if found, otherwise default to CH0B for legacy behavior
+        if let key = workingChargeKey {
+            if key == "CHTE" {
+                // macOS Tahoe mode - read UInt32
+                Helper.instance.SMCReadUInt32(key: key) { value in
+                    // In CHTE mode: 0 = Charging Enabled, 1 = Charging Disabled (Inhibited)
+                    // We check if value != 0 (so 1 means inhibited)
+                    self.chargeInhibited = (value != 0)
+                    print("CHARGE INHIBITED (CHTE): " + String(self.chargeInhibited))
+                }
+            } else {
+                // Legacy mode (CH0B, CH0C, BCLM) - read Byte
+                Helper.instance.SMCReadByte(key: key) { value in
+                    // In Legacy mode: 00 = Charging Enabled, 02 (or non-zero) = Disabled
+                     self.chargeInhibited = (value != 00)
+                     print("CHARGE INHIBITED (\(key)): " + String(self.chargeInhibited))
+                }
+            }
+        } else {
+            // Fallback for when workingChargeKey is not yet set
+            Helper.instance.SMCReadByte(key: "CH0B") { value in
+                self.chargeInhibited = !(value == 00)
+                print("CHARGE INHIBITED (Fallback CH0B): "+String(self.chargeInhibited))
+            }
         }
+        
         if(PersistanceManager.instance.oldKey){
             Helper.instance.readMaxBatteryCharge()
         }

@@ -9,7 +9,7 @@
 import Foundation
 import IOKit.pwr_mgt
 
-let helperVersion: String = "11" //for some reason the integrated version check does not work, so I use this one
+let helperVersion: String = "12" //for some reason the integrated version check does not work, so I use this one
 
 @objc(HelperToolProtocol) protocol HelperToolProtocol {
 //protocol HelperToolProtocol {

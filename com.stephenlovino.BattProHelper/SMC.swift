@@ -298,6 +298,11 @@ public struct SMCKit {
     /// Open connection to the SMC driver. This must be done first before any
     /// other calls
     public static func open() throws {
+        // [FIX] Idempotency check: If connection is already open, don't open again
+        if SMCKit.connection != 0 {
+            return
+        }
+        
         let service = IOServiceGetMatchingService(kIOMasterPortDefault,
                                                   IOServiceMatching("AppleSMC"))
 

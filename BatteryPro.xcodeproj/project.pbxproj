@@ -486,7 +486,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.1;
-				MARKETING_VERSION = "2.0 Alpha";
+				MARKETING_VERSION = "2.0 Beta";
 				PRODUCT_BUNDLE_IDENTIFIER = com.stephenlovino.BatteryPro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -514,7 +514,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.1;
-				MARKETING_VERSION = "2.0 Alpha";
+				MARKETING_VERSION = "2.0 Beta";
 				PRODUCT_BUNDLE_IDENTIFIER = com.stephenlovino.BatteryPro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

@@ -78,6 +78,8 @@ final class Helper {
     // Flag to indicate if this Mac uses CHTE (macOS Tahoe) or legacy keys
     public var usesTahoeKeys: Bool = false
     
+    public var chargeControlReady: Bool = false
+    
     // Check which SMC keys are available for charge control on this Mac
     func checkChargeControlAvailability(completion: @escaping (String?) -> Void) {
         print("Testing available charge control keys...")
@@ -85,6 +87,12 @@ final class Helper {
         // Strategy:
         // 1. If Apple Silicon -> Prefer BCLM (Limit Mode) over CHTE (Inhibit Mode)
         // 2. If Intel -> Try CH0B/CH0C first, then BCLM
+        
+        // Wrap completion to ensure we set the ready flag
+        let internalCompletion: (String?) -> Void = { key in
+            self.chargeControlReady = true
+            completion(key)
+        }
         
         let isArm = appleSilicon ?? false
         
@@ -105,15 +113,15 @@ final class Helper {
                         PersistanceManager.instance.save()
                     }
                     
-                    completion("BCLM")
+                    internalCompletion("BCLM")
                 } else {
                     // Fallback to CHTE for Apple Silicon if BCLM fails
-                    self.checkTahoeKeys(completion: completion)
+                    self.checkTahoeKeys(completion: internalCompletion)
                 }
             }
         } else {
             // Intel Strategy: Check Tahoe (some T2 Macs) -> Legacy
-            self.checkTahoeKeys(completion: completion)
+            self.checkTahoeKeys(completion: internalCompletion)
         }
     }
     

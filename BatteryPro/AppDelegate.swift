@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
         print("Creating status bar item...")
         let statusBar = NSStatusBar.system
-        statusBarItem = statusBar.statusItem(withLength: NSStatusItem.squareLength)
+        statusBarItem = statusBar.statusItem(withLength: NSStatusItem.variableLength)
         if let icon = NSImage(named: "menubaricon") {
             statusBarItem.button?.image = icon
             print("Using custom menubar icon")
@@ -162,6 +162,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             }
             
             if(Helper.instance.isInitialized){
+                // Gate: Wait for Charge Control to be ready (keys checked)
+                if !Helper.instance.chargeControlReady {
+                    print("Waiting for charge control initialization...")
+                    return
+                }
+                
                 // Reload persistence to ensure we have latest values
                 PersistanceManager.instance.load()
                 
@@ -273,6 +279,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     // MARK: - Charge Control Logic
     private func processChargeControlWithModes(Capacity: Int, IsCharging: Bool, actionMsg: inout String?) {
+        // [NEW] Check Manual Bypass first
+        if SMCPresenter.shared.bypassEnabled {
+             // Ensure charging is disabled
+             if !Helper.instance.chargeInhibited {
+                 Helper.instance.disableCharging()
+                 print("MANUAL BYPASS LOOP: Ensuring charging disabled")
+             }
+             Helper.instance.enableSleep() // Allow sleep
+             actionMsg = "MANUAL BYPASS ACTIVE"
+             return // Skip all other logic
+        }
+        
         // Check Sailing Mode
         if PersistanceManager.instance.sailingModeEnabled {
             let target = PersistanceManager.instance.sailingModeTarget

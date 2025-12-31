@@ -9,6 +9,7 @@
 import Foundation
 import ServiceManagement
 import IOKit.pwr_mgt
+import IOKit.ps
 
 protocol HelperDelegate {
     func OnMaxBatRead(value: UInt8)
@@ -504,6 +505,18 @@ final class Helper {
         }
     }
     
+    func getCPUTemperature(withReply reply: @escaping (Double) -> Void) {
+        let helper = helperToolConnection.remoteObjectProxyWithErrorHandler {
+            let e = $0 as NSError
+            print("Remote proxy error \(e.code): \(e.localizedDescription)")
+            reply(0.0)
+        } as? HelperToolProtocol
+        
+        helper?.readCPUTemperature { temp in
+            reply(temp)
+        }
+    }
+    
     func toggleLowPowerMode(enabled: Bool, completion: @escaping (Bool) -> Void) {
         let helper = helperToolConnection.remoteObjectProxyWithErrorHandler {
             let e = $0 as NSError
@@ -531,9 +544,33 @@ final class Helper {
     }
     
     func startCalibration() {
-        // Start battery calibration process
         print("Starting battery calibration...")
-        // TODO: Implement calibration logic
+        PersistanceManager.instance.calibrationModeEnabled = true
+        PersistanceManager.instance.calibrationStep = 0
+        PersistanceManager.instance.save()
+    }
+    
+    func stopCalibration() {
+        print("Stopping battery calibration...")
+        PersistanceManager.instance.calibrationModeEnabled = false
+        PersistanceManager.instance.calibrationStep = 0
+        PersistanceManager.instance.save()
+        // Reset charging state
+        enableCharging()
+    }
+    
+    func startDischarge(to target: Int) {
+        print("Starting discharge to \(target)%...")
+        PersistanceManager.instance.isDischarging = true
+        PersistanceManager.instance.dischargeTarget = target
+        PersistanceManager.instance.save()
+    }
+    
+    func stopDischarge() {
+        print("Stopping discharge...")
+        PersistanceManager.instance.isDischarging = false
+        PersistanceManager.instance.save()
+        enableCharging()
     }
     
     func getSMCCharge(withReply reply: @escaping (Float)->Void){
@@ -563,6 +600,129 @@ final class Helper {
         helper?.releaseAssertion(assertionID: assertionId)
     }
     
+    // MARK: - Sleep Management
+    
+    // We reuse preventSleepID (defined in class) to ensure unified state
+    
+    func checkSleepAssertion(currentCharge: Int = 0) {
+        // Condition: Enabled in Settings AND (Calibration Active OR (DisableUntilLimit AND Current < Target))
+        // Note: We use the passed currentCharge, or 0 if not provided (though for this logic relevant mostly when > 0)
+        let shouldDisableSleep = PersistanceManager.instance.calibrationModeEnabled ||
+                                 (PersistanceManager.instance.disableSleepUntilChargeLimit &&
+                                  Float(currentCharge) < Float(PersistanceManager.instance.chargeVal ?? 80))
+        
+        if shouldDisableSleep {
+            if preventSleepID == nil {
+                print("Acquiring Sleep Assertion...")
+                createAssertion(assertion: "PreventUserIdleSystemSleep") { [weak self] id in
+                    self?.preventSleepID = id
+                    print("Sleep Assertion Acquired: \(id)")
+                }
+            }
+        } else {
+            if let id = preventSleepID {
+                print("Releasing Sleep Assertion: \(id)")
+                releaseAssertion(assertionId: id)
+                preventSleepID = nil
+            }
+        }
+    }
+    
+    // enableSleep() was duplicated. Logic merged into existing methods or replaced if needed.
+    // The existing enableSleep at line 247 covers basic functionality.
+    
+    // We keep checkSleepAssertion as it's new.
+
+    
+    // disableCharging() was duplicated here. Removed to use the robust implementation at line 328.
+
+    func enforceLowPowerMode() {
+        let policy = PersistanceManager.instance.lowPowerModePolicy
+        // 0: Always Off, 1: Always On, 2: Auto
+        
+        checkLowPowerMode { [weak self] isEnabled in
+            guard let self = self else { return }
+            
+            var shouldBeEnabled = false
+            switch policy {
+            case 0: shouldBeEnabled = false
+            case 1: shouldBeEnabled = true
+            case 2:
+                // Auto: Enabled if on Battery
+                // Check power source
+                 let powerSource = IOPSGetProvidingPowerSourceType(nil)?.takeRetainedValue() as String?
+                 if powerSource == kIOPMBatteryPowerKey {
+                     shouldBeEnabled = true
+                 } else {
+                     shouldBeEnabled = false
+                 }
+            default: break
+            }
+            
+            if isEnabled != shouldBeEnabled {
+                print("Enforcing Low Power Mode: \(shouldBeEnabled) (Policy: \(policy))")
+                self.toggleLowPowerMode(enabled: shouldBeEnabled) { success in
+                    // Log result
+                }
+            }
+        }
+    }
+
+    func getTopEnergyConsumers(completion: @escaping ([String]) -> Void) {
+        // Run top command to get power usage
+        // top -l 1 -o power -n 10 -stats command,power
+        let task = Process()
+        task.launchPath = "/usr/bin/top"
+        // -l 1: single sample
+        // -o power: sort by power
+        // -n 10: top 10
+        // -stats command,power: only output these columns to make parsing easier
+        task.arguments = ["-l", "1", "-n", "10", "-stats", "command,power", "-o", "power"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        
+        do {
+            try task.run() // Deprecated but simple. Or use run() available on macOS 10.13+
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                var apps: [String] = []
+                let lines = output.components(separatedBy: "\n")
+                // Header usually: COMMAND POWER
+                var startParsing = false
+                
+                for line in lines {
+                    if line.contains("COMMAND") && line.contains("POWER") {
+                        startParsing = true
+                        continue
+                    }
+                    if startParsing {
+                        let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+                        // Should be: [COMMAND, POWER]
+                        // Note: COMMAND might truncate or contain spaces if not careful, but top -stats usually safe-ish
+                        // Actually, COMMAND with spaces will be split.
+                        // But POWER is always the last column.
+                        if let powerStr = parts.last, let power = Double(powerStr) {
+                             let command = parts.dropLast().joined(separator: " ")
+                             
+                             let thresholdVal = PersistanceManager.instance.energyThreshold == 0 ? 5.0 : (PersistanceManager.instance.energyThreshold == 1 ? 20.0 : 50.0)
+                             
+                             if power > thresholdVal {
+                                 apps.append("\(command) (\(Int(power)))")
+                             }
+                        }
+                    }
+                }
+                completion(apps)
+            } else {
+                completion([])
+            }
+        } catch {
+            print("Failed to run top: \(error)")
+            completion([])
+        }
+    }
+
     @objc func installHelper() {
         print("trying to install helper!")
         var status = noErr
@@ -788,110 +948,129 @@ final class Helper {
     }
     
     func getSMCBatteryInfo(withReply reply: @escaping ([String: Any]) -> Void) {
-        var result: [String: Any] = [:]
-        let group = DispatchGroup()
+        let helper = helperToolConnection.remoteObjectProxyWithErrorHandler { _ in 
+             DispatchQueue.main.async { reply([:]) }
+        } as? HelperToolProtocol
         
-        // Voltage (mV) - B0AV (Seemingly LE on Apple Silicon)
-        group.enter()
-        SMCReadWordSwapped(key: "B0AV") { val in
-            result["Voltage"] = Double(val) / 1000.0 // mV -> V
-            group.leave()
-        }
-        
-        // Amperage (mA) - B0AC (BE/Signed)
-        group.enter()
-        SMCReadInt16(key: "B0AC") { val in
-            result["Amperage"] = Double(val) / 1000.0 // mA -> A
-            group.leave()
-        }
-        
-        // Cycles - B0CT (LE)
-        group.enter()
-        SMCReadWordSwapped(key: "B0CT") { val in
-            result["CycleCount"] = Int(val)
-            group.leave()
-        }
-        
-        // Design Capacity (mAh) - B0DC (Likely BE)
-        group.enter()
-        SMCReadWord(key: "B0DC") { val in
-            result["DesignCapacity"] = Int(val)
-            group.leave()
-        }
-        
-        // Max Capacity (mAh) - B0FC (LE)
-        group.enter()
-        SMCReadWordSwapped(key: "B0FC") { val in
-            result["MaxCapacity"] = Int(val)
-            group.leave()
-        }
-        
-        // Current Capacity (mAh) - B0RM (Likely BE)
-        group.enter()
-        SMCReadWord(key: "B0RM") { val in
-            result["CurrentCapacity"] = Int(val)
-            group.leave()
-        }
-        
-        // Temperature - Try multiple keys for Apple Silicon support
-        group.enter()
-        let helper = helperToolConnection.remoteObjectProxyWithErrorHandler { _ in } as? HelperToolProtocol
-        
-        let candidateKeys = ["TB0T", "TB1T", "TB2T", "Tp0P", "TC0D", "TC0P"]
-        var foundTemp = false
-        
-        func tryNextKey(index: Int) {
-            guard index < candidateKeys.count else {
-                group.leave()
-                return
-            }
-            
-            let key = candidateKeys[index]
-            helper?.readSMCSP78(key: key) { temp in
-                if temp > 0 && temp < 100 {
-                    result["Temperature"] = temp
-                    result["TempSensor"] = key // useful for debug
-                    group.leave()
-                } else {
-                    tryNextKey(index: index + 1)
+        helper?.readBatteryStatus { status in
+            DispatchQueue.main.async {
+                var result = status
+                
+                // Static Strings (Fallback)
+                if result["Manufacturer"] == nil { result["Manufacturer"] = "Apple" }
+                if result["Serial"] == nil { result["Serial"] = "Protected" }
+                if result["ManufactureDate"] == nil { result["ManufactureDate"] = Date() }
+                
+                // Derived Fields
+                var amps = result["Amperage"] as? Double ?? 0
+                var volts = result["Voltage"] as? Double ?? 0
+                
+                // Fix Amperage Sign for Apple Silicon
+                // Experimentally determined: On M1/M2, Negative Amps = Charging
+                if let isAppleSilicon = self.appleSilicon, isAppleSilicon {
+                    amps = -amps
+                    result["Amperage"] = amps
                 }
+                
+                result["IsCharging"] = amps > 0
+                result["PowerConsumption"] = amps * volts // W
+                
+                // Adapter Defaults
+                if amps > 0 {
+                    result["AdapterConnected"] = true
+                    result["AdapterWattage"] = 60 
+                    result["AdapterName"] = "Power Adapter"
+                } else {
+                    result["AdapterConnected"] = false
+                    result["AdapterWattage"] = 0
+                    result["AdapterName"] = "Not Connected"
+                }
+                
+                reply(result)
             }
-        }
-        
-        tryNextKey(index: 0)
-        
-        group.notify(queue: .main) {
-            // Derived Fields
-            var amps = result["Amperage"] as? Double ?? 0
-            var volts = result["Voltage"] as? Double ?? 0
-            
-            // Fix Amperage Sign for Apple Silicon
-            // Experimentally determined: On M1/M2, Negative Amps = Charging
-            if let isAppleSilicon = self.appleSilicon, isAppleSilicon {
-                amps = -amps
-                result["Amperage"] = amps
-            }
-            
-            result["IsCharging"] = amps > 0
-            result["PowerConsumption"] = amps * volts // W
-            
-            // Adapter Defaults
-            if amps > 0 {
-                result["AdapterConnected"] = true
-                result["AdapterWattage"] = 60 
-                result["AdapterName"] = "Power Adapter"
-            } else {
-                result["AdapterConnected"] = false
-                result["AdapterWattage"] = 0
-                result["AdapterName"] = "Not Connected"
-            }
-            
-            // Static Strings (Fallback)
-            result["Manufacturer"] = "Apple"
-            result["Serial"] = "Protected" 
-            result["ManufactureDate"] = Date()
-            
-            reply(result)
         }
     }
 }
+
+// MARK: - Thermal Pressure Reader (Embedded)
+
+/// Defines the thermal pressure levels
+enum ThermalPressure: String {
+    case nominal = "Nominal"
+    case moderate = "Moderate"
+    case heavy = "Heavy"
+    case critical = "Critical"
+    case unknown = "Unknown"
+    
+    var isThrottling: Bool {
+        return self == .heavy || self == .critical
+    }
+}
+
+/// Reads thermal pressure level directly from the system using Darwin notifications.
+/// This provides the same 5-level granularity as `powermetrics -s thermal` without
+/// requiring root privileges or a helper daemon.
+final class ThermalPressureReader {
+    static let shared = ThermalPressureReader()
+
+    private var token: Int32 = 0
+    private var isRegistered = false
+
+    private init() {
+        register()
+    }
+
+    deinit {
+        if isRegistered {
+            _ = notify_cancel(token)
+        }
+    }
+
+    private func register() {
+        // "com.apple.system.thermalpressurelevel" is a private notification used by macOS
+        let result = notify_register_check("com.apple.system.thermalpressurelevel", &token)
+        isRegistered = (result == notifyStatusOK)
+        if !isRegistered {
+            print("Failed to register for thermal pressure notifications")
+        }
+    }
+
+    /// Reads the current thermal pressure level.
+    /// Returns nil if the notification system is unavailable.
+    func readPressure() -> ThermalPressure {
+        guard isRegistered else { return .unknown }
+
+        var state: UInt64 = 0
+        let result = notify_get_state(token, &state)
+
+        guard result == notifyStatusOK else { return .unknown }
+
+        switch state {
+        case 0: return .nominal
+        case 1: return .moderate
+        case 2: return .heavy
+        case 3, 4: return .critical
+        default: return .unknown
+        }
+    }
+}
+
+// MARK: - Darwin notify functions headers
+
+// Since we can't import private headers, we define the signatures here to link against libSystem
+@_silgen_name("notify_register_check")
+private func notify_register_check(
+    _ name: UnsafePointer<CChar>,
+    _ token: UnsafeMutablePointer<Int32>
+) -> UInt32
+
+@_silgen_name("notify_get_state")
+private func notify_get_state(
+    _ token: Int32,
+    _ state: UnsafeMutablePointer<UInt64>
+) -> UInt32
+
+@_silgen_name("notify_cancel")
+private func notify_cancel(_ token: Int32) -> UInt32
+
+private let notifyStatusOK: UInt32 = 0

@@ -34,12 +34,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var popover: NSPopover!
     
     func applicationWillTerminate(_ aNotification: Notification) {
+        print("Application Terminating...")
+        
+        // Release any sleep assertions
         Helper.instance.enableSleep()
-        Helper.instance.enableCharging()
+        
+        // Stop Charging behavior
+        if PersistanceManager.instance.stopChargingWhenAppClosed {
+            print("Stop Charging When App Closed is ENABLED. Disabling charging...")
+            Helper.instance.disableCharging()
+        } else {
+            print("Restoring charging...")
+            Helper.instance.enableCharging() // Defaults to BCLM 100 or CH0B 0 (Enable)
+        }
     }
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         print("=== BatteryPro Starting ===")
+        
+        // Setup Sleep Monitoring
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(handleSleep(_:)), name: NSWorkspace.willSleepNotification, object: nil)
+        NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(handleWake(_:)), name: NSWorkspace.didWakeNotification, object: nil)
         
         print("Loading persistence data...")
         PersistanceManager.instance.load() // Load early for correct init state
@@ -173,6 +188,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 
                 Helper.instance.getChargingInfo { (Name, Capacity, IsCharging, MaxCapacity) in
                     
+                    // Check Sleep Assertion status (dynamic update)
+                    Helper.instance.checkSleepAssertion(currentCharge: Capacity)
+                    
+                    // Enforce Low Power Mode Policy
+                    Helper.instance.enforceLowPowerMode()
+
                     // Check Heat Protection first (async, so handle it separately)
                     if PersistanceManager.instance.heatProtectionEnabled {
                         Helper.instance.getBatteryTemperature { [weak self] temp in
@@ -254,13 +275,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
-
-    func windowWillClose(_ notification: Notification) {
-        if !PersistanceManager.instance.showDockIcon {
-             NSApp.setActivationPolicy(.accessory)
-        }
-    }
     
+    
+
+    
+    
+
+
+
     func updateDockIcon() {
         if PersistanceManager.instance.showDockIcon {
              NSApp.setActivationPolicy(.regular)
@@ -279,7 +301,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     
     // MARK: - Charge Control Logic
     private func processChargeControlWithModes(Capacity: Int, IsCharging: Bool, actionMsg: inout String?) {
-        // [NEW] Check Manual Bypass first
+        // [NEW] Check Calibration Mode first
+        if PersistanceManager.instance.calibrationModeEnabled {
+            processCalibrationLogic(Capacity: Capacity, IsCharging: IsCharging, actionMsg: &actionMsg)
+            return
+        }
+    
+        // [PRIORITY 1] Check Manual Bypass FIRST - This is a hard override
+        // Manual Bypass takes precedence over all other charging modes
         if SMCPresenter.shared.bypassEnabled {
              // Ensure charging is disabled
              if !Helper.instance.chargeInhibited {
@@ -288,28 +317,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
              }
              Helper.instance.enableSleep() // Allow sleep
              actionMsg = "MANUAL BYPASS ACTIVE"
-             return // Skip all other logic
+             return // Skip all other logic including Discharge
         }
         
-        // Check Sailing Mode
+        // [PRIORITY 2] Check Manual Discharge
+        if PersistanceManager.instance.isDischarging {
+             let target = PersistanceManager.instance.dischargeTarget
+             if Capacity > target {
+                 // Still need to discharge
+                 if !Helper.instance.chargeInhibited {
+                     Helper.instance.disableCharging()
+                     print("DISCHARGE MODE: Disabling charge - Capacity \(Capacity)% > Target \(target)%")
+                 }
+                 Helper.instance.enableSleep()
+                 actionMsg = "DISCHARGING TO \(target)%"
+                 return
+             } else {
+                 // Target reached, stop discharging
+                 print("DISCHARGE MODE: Target \(target)% reached. Disabling discharge mode.")
+                 PersistanceManager.instance.isDischarging = false
+                 PersistanceManager.instance.save()
+                 // Continue to normal charge control to maintain this level or charge up
+             }
+        }
+        
+        // Check Sailing Mode with Hysteresis ("Drift")
         if PersistanceManager.instance.sailingModeEnabled {
             let target = PersistanceManager.instance.sailingModeTarget
+            let diff = PersistanceManager.instance.sailingModeDifference
+            let lowerBound = max(target - diff, 0)
+            
             if Capacity > target {
-                // Battery is above target, discharge it
-                if !Helper.instance.chargeInhibited {
-                    Helper.instance.disableCharging()
-                    print("SAILING MODE: Disabled charging - Capacity \(Capacity)% > Target \(target)%")
-                }
-                Helper.instance.enableSleep() // Allow sleep during discharge
-                return // Don't process normal charge control in sailing mode
-            } else if Capacity <= target {
-                // Battery is at or below target, keep it there
-                if Helper.instance.chargeInhibited {
-                    Helper.instance.enableCharging()
-                    print("SAILING MODE: Enabled charging - Capacity \(Capacity)% <= Target \(target)%")
-                }
-                Helper.instance.disableSleep() // Prevent sleep to maintain level
-                return // Don't process normal charge control in sailing mode
+                 // Above target -> Disable Charge (Coast)
+                 if !Helper.instance.chargeInhibited {
+                     Helper.instance.disableCharging()
+                     print("SAILING MODE: Coasting (Capacity \(Capacity)% > Target \(target)%)")
+                 }
+                 Helper.instance.enableSleep()
+                 actionMsg = "SAILING: COASTING"
+                 return
+            } else if Capacity <= lowerBound {
+                 // Below lower bound -> Enable Charge (Refill)
+                 if Helper.instance.chargeInhibited {
+                     // Only enable if we are truly below the hysteresis buffer
+                     Helper.instance.enableCharging()
+                     print("SAILING MODE: Refilling (Capacity \(Capacity)% <= Lower \(lowerBound)%)")
+                 }
+                 Helper.instance.disableSleep()
+                 actionMsg = "SAILING: REFILLING"
+                 return
+            } else {
+                 // Between LowerBound and Target -> Stay in current state (Hysteresis)
+                 // If we were charging, keep charging to target. If we were discharging, keep discharging to lower bound.
+                 // Ideally we want to "Sail" (Discharge) if we just came from top, and Charge if we came from bottom.
+                 // But without keeping state, simple logic:
+                 // If IsCharging, let it charge to Target.
+                 // If Not Charging, let it discharge to LowerBound.
+                 actionMsg = "SAILING: DRIFTING"
+                 return
             }
         }
         
@@ -317,12 +382,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         processChargeControl(Capacity: Capacity, IsCharging: IsCharging, actionMsg: &actionMsg)
     }
     
+    private func processCalibrationLogic(Capacity: Int, IsCharging: Bool, actionMsg: inout String?) {
+        let step = PersistanceManager.instance.calibrationStep
+        
+        switch step {
+        case 0: // Start
+            print("CALIBRATION: Starting... Setting step to 1")
+            PersistanceManager.instance.calibrationStep = 1
+            PersistanceManager.instance.save()
+            
+        case 1: // Charge to 100%
+            actionMsg = "CALIBRATION: CHARGING TO 100%"
+            if Capacity < 100 {
+                if Helper.instance.chargeInhibited { Helper.instance.enableCharging() }
+                Helper.instance.disableSleep()
+            } else {
+                // Reached 100%
+                print("CALIBRATION: Reached 100%. Moving to Step 2 (Discharge)")
+                PersistanceManager.instance.calibrationStep = 2
+                PersistanceManager.instance.save()
+            }
+            
+        case 2: // Discharge to 15%
+             actionMsg = "CALIBRATION: DISCHARGING TO 15%"
+             if Capacity > 15 {
+                 if !Helper.instance.chargeInhibited { Helper.instance.disableCharging() }
+                 Helper.instance.enableSleep()
+             } else {
+                 // Reached 15%
+                 print("CALIBRATION: Reached 15%. Moving to Step 3 (Charge to 100%)")
+                 PersistanceManager.instance.calibrationStep = 3
+                 PersistanceManager.instance.save()
+             }
+             
+        case 3: // Charge to 100% Again
+            actionMsg = "CALIBRATION: FINAL CHARGE"
+             if Capacity < 100 {
+                 if Helper.instance.chargeInhibited { Helper.instance.enableCharging() }
+                 Helper.instance.disableSleep()
+             } else {
+                 // Done
+                 print("CALIBRATION: Full Cycle Complete!")
+                 PersistanceManager.instance.calibrationStep = 0
+                 PersistanceManager.instance.calibrationModeEnabled = false // Disable mode
+                 PersistanceManager.instance.save()
+                 actionMsg = "CALIBRATION COMPLETE"
+             }
+             
+        default:
+            break
+        }
+    }
+    
     private func processChargeControl(Capacity: Int, IsCharging: Bool, actionMsg: inout String?) {
         if(!PersistanceManager.instance.oldKey){
-            // CH0B mode (Intel Macs) - charge inhibit approach
-            let target = Int(SMCPresenter.shared.value)
+            // CH0B/CHTE mode - charge inhibit approach
+            // Use effectiveTarget which returns 100 when Boost Charge is active
+            let target = SMCPresenter.shared.effectiveTarget
+            let boostActive = SMCPresenter.shared.boostChargeEnabled
+            
             if(Capacity < target){
-                actionMsg = "NEED TO CHARGE"
+                actionMsg = boostActive ? "BOOST CHARGING" : "NEED TO CHARGE"
                 if(Helper.instance.chargeInhibited){
                     Helper.instance.enableCharging()
                 }
@@ -330,24 +450,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
  
             }
             else{
-                actionMsg = "IS PERFECT - STOPPING CHARGE"
+                actionMsg = boostActive ? "BOOST COMPLETE" : "IS PERFECT - STOPPING CHARGE"
                 if(!Helper.instance.chargeInhibited){
                     Helper.instance.disableCharging()
                     print("DISABLING CHARGE - Capacity \(Capacity) >= Target \(target)")
                 }
                 Helper.instance.enableSleep()
                 
+                // Auto-disable boost when 100% is reached
+                if boostActive && Capacity >= 100 {
+                    SMCPresenter.shared.stopBoostCharge()
+                    print("BOOST CHARGE: Auto-completed at 100%")
+                }
             }
             print("TARGET: ",target,
                   " CURRENT: ",String(Capacity),
                   " ISCHARGING: ",String(IsCharging),
                   " CHARGE INHIBITED: ",String(Helper.instance.chargeInhibited),
+                  " BOOST: ", boostActive ? "ON" : "OFF",
                   " ACTION: ",actionMsg ?? "NONE")
         }
         else{
             // BCLM mode (Apple Silicon or Intel with BCLM support)
             // Write the charge limit directly to BCLM key
-            let target = Int(SMCPresenter.shared.value)
+            let target = SMCPresenter.shared.effectiveTarget
             
             // On Apple Silicon, BCLM *can* support precise values, contrary to old beliefs.
             // We'll trust the SMC to handle the value or round it internally if needed.
@@ -364,6 +490,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             
             Helper.instance.writeMaxBatteryCharge(setVal: bclmValue)
             print("BCLM MODE: Set max charge to \(bclmValue)% (requested \(target)%)")
+        }
+    }
+    
+    @objc func handleSleep(_ notification: Notification) {
+        print("System is going to sleep...")
+        if PersistanceManager.instance.stopChargingWhenSleeping {
+             print("Stop Charging When Sleeping is ENABLED. Disabling charging now.")
+             Helper.instance.disableCharging()
+        }
+    }
+    
+    @objc func handleWake(_ notification: Notification) {
+        print("System woke up.")
+        // Just trigger a check. The main loop will restore correct state within 5s.
+        Helper.instance.checkCharging()
+    }
+    
+    func windowWillClose(_ notification: Notification) {
+        if !PersistanceManager.instance.showDockIcon {
+             NSApp.setActivationPolicy(.accessory)
         }
     }
 }

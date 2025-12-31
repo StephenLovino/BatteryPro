@@ -156,7 +156,6 @@ private struct Settings: View {
 struct ContentView: View {
     @State private var showSettings = false
     @State private var isDischarging = false
-    @State private var isToppingUp = false
 
     @ObservedObject private var presenter = SMCPresenter.shared
 
@@ -175,24 +174,31 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     // Top button row
                     HStack(spacing: 6) {
-                        // Limit Input (Editable)
+                        // Limit Input (Editable, disabled during boost)
                         HStack(spacing: 2) {
-                            Text("Limit:")
+                            Text(presenter.boostChargeEnabled ? "Boost:" : "Limit:")
                                 .font(.system(size: 12, weight: .medium))
                                 .fixedSize()
                             
-                            TextField("80", text: Binding(
-                                get: { String(Int(presenter.value)) },
-                                set: { newValue in
-                                    if let val = Int(newValue), val >= 20 && val <= 100 {
-                                        presenter.setValue(value: Float(val))
+                            if presenter.boostChargeEnabled {
+                                // During boost, show static "100" (non-editable)
+                                Text("100")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .frame(width: 26)
+                            } else {
+                                TextField("80", text: Binding(
+                                    get: { String(Int(presenter.value)) },
+                                    set: { newValue in
+                                        if let val = Int(newValue), val >= 20 && val <= 100 {
+                                            presenter.setValue(value: Float(val))
+                                        }
                                     }
-                                }
-                            ))
-                            .font(.system(size: 12, weight: .bold))
-                            .multilineTextAlignment(.center)
-                            .textFieldStyle(PlainTextFieldStyle())
-                            .frame(width: 26)
+                                ))
+                                .font(.system(size: 12, weight: .bold))
+                                .multilineTextAlignment(.center)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .frame(width: 26)
+                            }
                             
                             Text("%")
                                 .font(.system(size: 12, weight: .bold))
@@ -202,7 +208,7 @@ struct ContentView: View {
                         .padding(.vertical, 7)
                         .background(
                             Capsule()
-                                .fill(Theme.Colors.accent)
+                                .fill(presenter.boostChargeEnabled ? Color.orange : Theme.Colors.accent)
                         )
                         .overlay(
                             Capsule()
@@ -228,25 +234,23 @@ struct ContentView: View {
                         }
                         .buttonStyle(ModernButtonStyle(isActive: isDischarging))
                         
-                        // Top Up button
+                        // Boost Charge button (Top Up)
                         Button(action: {
-                            isToppingUp.toggle()
-                            if isToppingUp {
-                                Helper.instance.enableCharging()
-                                presenter.setValue(value: 100)
+                            if presenter.boostChargeEnabled {
+                                presenter.stopBoostCharge()
                             } else {
-                                presenter.setValue(value: Float(presenter.value))
+                                presenter.startBoostCharge()
                             }
                         }) {
                             HStack(spacing: 4) {
                                 Text("Boost Charge")
                                     .font(.system(size: 12, weight: .medium))
                                     .fixedSize()
-                                Image(systemName: "plus.circle.fill")
+                                Image(systemName: presenter.boostChargeEnabled ? "bolt.fill" : "plus.circle.fill")
                                     .font(.system(size: 12))
                             }
                         }
-                        .buttonStyle(ModernButtonStyle(isActive: isToppingUp))
+                        .buttonStyle(ModernButtonStyle(isActive: presenter.boostChargeEnabled))
                         
                         Spacer()
                         
@@ -283,7 +287,7 @@ struct ContentView: View {
                     VStack(spacing: 4) {
                         Slider(
                             value: Binding(
-                                get: { Float(presenter.value) },
+                                get: { Float(presenter.boostChargeEnabled ? 100 : presenter.value) },
                                 set: { newValue in
                                     if newValue >= 20 && newValue <= 100 {
                                         presenter.setValue(value: newValue)
@@ -292,11 +296,12 @@ struct ContentView: View {
                             ),
                             in: 20...100
                         )
-                        .accentColor(Theme.Colors.accent)
+                        .accentColor(presenter.boostChargeEnabled ? Color.orange : Theme.Colors.accent)
+                        .disabled(presenter.boostChargeEnabled)
                         
-                        Text("Set maximum charge limit")
+                        Text(presenter.boostChargeEnabled ? "Boost active - charging to 100%" : "Set maximum charge limit")
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(presenter.boostChargeEnabled ? .orange : .secondary)
                     }
                     .padding(.horizontal, 10)
                     .padding(.bottom, 8)
@@ -316,9 +321,11 @@ public final class SMCPresenter: ObservableObject, HelperDelegate {
 
     @Published var value: UInt8 = 0
     @Published var bypassEnabled: Bool = false
+    @Published var boostChargeEnabled: Bool = false
     @Published var status: String = ""
     private var timer: Timer?
     private var accuracyTimer: Timer?
+    private var savedLimitBeforeBoost: UInt8 = 80  // Stores original limit during boost
 
     func OnMaxBatRead(value: UInt8) {
         if(PersistanceManager.instance.oldKey){
@@ -338,6 +345,15 @@ public final class SMCPresenter: ObservableObject, HelperDelegate {
         DispatchQueue.main.async {
             self.bypassEnabled = enabled
             if enabled {
+                // Bypass and Boost are mutually exclusive
+                if self.boostChargeEnabled {
+                    self.boostChargeEnabled = false
+                    self.value = self.savedLimitBeforeBoost
+                    PersistanceManager.instance.chargeVal = Int(self.savedLimitBeforeBoost)
+                    PersistanceManager.instance.save()
+                    print("MANUAL BYPASS: Auto-disabled Boost Charge, restored limit to \(self.savedLimitBeforeBoost)%")
+                }
+                
                 Helper.instance.disableCharging()
                 print("MANUAL BYPASS: Charging Disabled")
             } else {
@@ -362,9 +378,68 @@ public final class SMCPresenter: ObservableObject, HelperDelegate {
             writeValue()
         }
     }
-
-    func setValue(value: Float) {
+    
+    // MARK: - Boost Charge
+    
+    public func startBoostCharge() {
         DispatchQueue.main.async {
+            // Boost and Bypass are mutually exclusive - disable bypass first
+            if self.bypassEnabled {
+                self.bypassEnabled = false
+                print("BOOST CHARGE: Auto-disabled Manual Bypass")
+            }
+            
+            // Save the current limit before boosting
+            self.savedLimitBeforeBoost = self.value
+            self.boostChargeEnabled = true
+            
+            // Set limit to 100 and enable charging
+            self.value = 100
+            PersistanceManager.instance.chargeVal = 100
+            PersistanceManager.instance.save()
+            
+            Helper.instance.enableCharging()
+            print("BOOST CHARGE: Started - Saved limit \(self.savedLimitBeforeBoost)%, now charging to 100%")
+        }
+    }
+    
+    public func stopBoostCharge() {
+        DispatchQueue.main.async {
+            self.boostChargeEnabled = false
+            
+            // Restore the original limit
+            self.value = self.savedLimitBeforeBoost
+            PersistanceManager.instance.chargeVal = Int(self.savedLimitBeforeBoost)
+            PersistanceManager.instance.save()
+            
+            print("BOOST CHARGE: Stopped - Restored limit to \(self.savedLimitBeforeBoost)%")
+            
+            // Re-evaluate charging based on restored limit
+            if Helper.instance.isInitialized {
+                Helper.instance.getChargingInfo { (Name, Capacity, IsCharging, MaxCapacity) in
+                    let target = Int(self.value)
+                    if Capacity >= target {
+                        Helper.instance.disableCharging()
+                        print("BOOST CHARGE OFF: Disabled charging - Capacity \(Capacity) >= Target \(target)")
+                    }
+                }
+            }
+        }
+    }
+    
+    /// Get the effective target (100 if boost is active, otherwise the set limit)
+    public var effectiveTarget: Int {
+        return boostChargeEnabled ? 100 : Int(value)
+    }
+
+    func setValue(value: Float, isUserAction: Bool = true) {
+        DispatchQueue.main.async {
+            // If user manually changes the limit, turn off boost charge
+            if isUserAction && self.boostChargeEnabled {
+                self.boostChargeEnabled = false
+                print("BOOST CHARGE: Auto-disabled due to manual limit change")
+            }
+            
             self.value = UInt8(value)
             PersistanceManager.instance.chargeVal = Int(value)
             PersistanceManager.instance.save()

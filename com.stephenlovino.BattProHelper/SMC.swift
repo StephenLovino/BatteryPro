@@ -86,9 +86,10 @@ public extension Int {
 extension Double {
 
     init(fromSP78 bytes: SP78) {
-        // FIXME: Handle second byte
         let sign = bytes.0 & 0x80 == 0 ? 1.0 : -1.0
-        self = sign * Double(bytes.0 & 0x7F)    // AND to mask sign bit
+        let integer = Double(bytes.0 & 0x7F)
+        let fraction = Double(bytes.1) / 256.0
+        self = sign * (integer + fraction)
     }
 }
 
@@ -245,8 +246,14 @@ public struct DataTypes {
                  DataType(type: FourCharCode(fromStaticString: "sp78"), size: 2)
     public static let UInt8 =
                  DataType(type: FourCharCode(fromStaticString: "ui8 "), size: 1)
+    public static let UInt16 =
+                 DataType(type: FourCharCode(fromStaticString: "ui16"), size: 2)
+    public static let Int16 =
+                 DataType(type: FourCharCode(fromStaticString: "si16"), size: 2)
     public static let UInt32 =
                  DataType(type: FourCharCode(fromStaticString: "ui32"), size: 4)
+    public static let Flt =
+                 DataType(type: FourCharCode(fromStaticString: "flt "), size: 4)
 }
 
 public struct SMCKey {
@@ -319,6 +326,7 @@ public struct SMCKit {
     @discardableResult
     public static func close() -> Bool {
         let result = IOServiceClose(SMCKit.connection)
+        SMCKit.connection = 0 // [FIX] Reset connection variable so open() can run again
         return result == kIOReturnSuccess ? true : false
     }
 

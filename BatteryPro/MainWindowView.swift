@@ -49,6 +49,11 @@ struct Theme {
         // Updated to use the Accent color with low opacity for a branded feel, instead of the previous white which caused issues
         static let cardBorder = dynamicColor(light: "00D2A64D", dark: "00D2A64D") // Teal 30%
         static let cardShadow = dynamicColor(light: "0000001A", dark: "0000004D") // Black 10% vs Black 30%
+        
+        // Tahoe Theme Specifics
+        static let sidebarBackground = dynamicColor(light: "EBECF0", dark: "252525") // Distinct Sidebar Grey
+        static let sidebarBorder = dynamicColor(light: "00000026", dark: "FFFFFF26") // ~15% opacity Black/White
+        static let navbarHighlight = dynamicColor(light: "FFFFFF", dark: "3A3A3C") // Lighter header for embossing effect
     }
     
     struct Layout {
@@ -182,23 +187,35 @@ struct MainWindowView: View {
         ZStack {
             HStack(spacing: 0) {
             // Sidebar
+            // Sidebar
             SidebarView(selectedSection: $selectedSection, activeOnboardingSection: onboardingIndex >= 0 ? onboardingSteps[onboardingIndex].section : nil)
                 .frame(width: Theme.Layout.sidebarWidth)
-                .background(
-                    VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
-                        .ignoresSafeArea(.all, edges: .top)
-                )
-                // Outline for the ScrollView area? No, outline for the whole sidebar
-                .overlay(
-                    Rectangle()
-                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
-                        .ignoresSafeArea(.all, edges: .top)
-                        .padding(.trailing, -1) // overlap or adjacent?
-                )
                 .ignoresSafeArea(.all, edges: .top)
+                .background(
+                    ZStack {
+                        // Base Material
+                        VisualEffectView(material: .sidebar, blendingMode: .behindWindow)
+                        
+                        // Solid Tint for coloring (if needed)
+                        Theme.Colors.sidebarBackground.opacity(0.8)
+                    }
+                    .ignoresSafeArea()
+                )
+                .overlay(
+                    HStack {
+                        Spacer()
+                        // Right edge border
+                        Rectangle()
+                            .fill(Theme.Colors.sidebarBorder)
+                            .frame(width: 1)
+                    }
+                    .ignoresSafeArea()
+                )
+ 
+            // Divider (Optional now since we have the border, but keeping spacing)
+            // EmbossedDivider().ignoresSafeArea() // Removing explicit divider for cleaner border look
             
-            EmbossedDivider()
-                .ignoresSafeArea()
+            // Content
             
             // Content
             ZStack {
@@ -213,7 +230,7 @@ struct MainWindowView: View {
                 case .sleepBehavior:
                     SleepBehaviorView()
                 case .energyUse:
-                    EnergyUseView()
+                    EnergyMonitorView()
                 case .schedule:
                     ScheduleView()
                 case .shortcuts:
@@ -289,8 +306,21 @@ struct SidebarView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // macOS Traffic Lights spacing
-            Color.clear.frame(height: 40)
+            // macOS Traffic Lights spacing (Navbar Area)
+            HStack {
+                 Spacer()
+            }
+            .frame(height: 52) // Standard titlebar height
+            .background(
+                Theme.Colors.navbarHighlight
+            )
+            .overlay(
+                 Rectangle()
+                     .fill(Theme.Colors.sidebarBorder)
+                     .frame(height: 1),
+                 alignment: .bottom
+            )
+            .shadow(color: Color.black.opacity(0.1), radius: 1, x: 0, y: 1) // "Embossed" drop shadow
             
             // Dashboard Button (Primary)
             Button(action: { selectedSection = .dashboard }) {
@@ -310,6 +340,7 @@ struct SidebarView: View {
             }
             .buttonStyle(PlainButtonStyle())
             .padding(.horizontal, 16)
+            .padding(.top, 16) // Add padding after navbar
             .padding(.bottom, 20)
             
             // Scrollable Menu Sections
@@ -488,12 +519,31 @@ struct DashboardView: View {
                 }
                 
                 // -- Row 3 --
-                // 7. Battery Temperature
-                 DashboardWidget(title: "Temperature", icon: "thermometer") {
-                     VStack(alignment: .leading) {
-                          Text(String(format: "%.1f °C", batteryInfo.temperature))
-                            .font(Theme.Fonts.largeNumber)
-                            .foregroundColor(Theme.Colors.textPrimary)
+                // 7. Thermal Status
+                 DashboardWidget(title: "Thermals", icon: "thermometer") {
+                     VStack(alignment: .leading, spacing: 4) {
+                          HStack {
+                              Text("Battery:")
+                                .foregroundColor(Theme.Colors.textSecondary)
+                              Spacer()
+                              Text(String(format: "%.1f°C", batteryInfo.temperature))
+                                .foregroundColor(Theme.Colors.textPrimary)
+                          }.font(Theme.Fonts.caption)
+                          
+                          HStack {
+                              Text("CPU:")
+                                .foregroundColor(Theme.Colors.textSecondary)
+                              Spacer()
+                              Text(String(format: "%.1f°C", batteryInfo.cpuTemperature))
+                                .foregroundColor(batteryInfo.cpuTemperature > 90 ? .red : (batteryInfo.cpuTemperature > 75 ? .orange : Theme.Colors.textPrimary))
+                          }.font(Theme.Fonts.caption)
+                          
+                          Spacer().frame(height: 2)
+                          
+                          Text(batteryInfo.thermalPressure)
+                            .font(Theme.Fonts.title) // Slightly smaller than largeNumber
+                            .fontWeight(.bold)
+                            .foregroundColor(batteryInfo.thermalPressure == "Nominal" ? Theme.Colors.success : (batteryInfo.thermalPressure == "Critical" ? Theme.Colors.danger : Theme.Colors.warning))
                      }
                  }
 
@@ -697,6 +747,8 @@ class BatteryInfo: ObservableObject {
     @Published var timeRemaining: String = "--:--" // Changed to String for easy display
     @Published var powerConsumption: Double = 0
     @Published var condition: String = "Normal"
+    @Published var cpuTemperature: Double = 0
+    @Published var thermalPressure: String = "Nominal"
     
     // New Metrics for Unlocked Widgets
     @Published var manufacturer: String = "Apple"
@@ -721,9 +773,14 @@ class BatteryInfo: ObservableObject {
                 DispatchQueue.main.async {
                     // Merge Data: Prefer SMC for numbers, IOKit for Strings
                     
-                    // Capacity & Cycles (SMC Preferred)
-                    self.currentCapacity = smcInfo["CurrentCapacity"] as? Int ?? iokitInfo["CurrentCapacity"] as? Int ?? 0
-                    self.maxCapacity = smcInfo["MaxCapacity"] as? Int ?? iokitInfo["MaxCapacity"] as? Int ?? 100
+                    // Merge Data: Prefer IOKit for UI-matching Capacity, SMC for sensors
+                    
+                    // Capacity (IOKit Preferred for OS Match)
+                    // If IOKit capacity is available, use it. Otherwise fall back to SMC.
+                    self.currentCapacity = iokitInfo["CurrentCapacity"] as? Int ?? smcInfo["CurrentCapacity"] as? Int ?? 0
+                    self.maxCapacity = iokitInfo["MaxCapacity"] as? Int ?? smcInfo["MaxCapacity"] as? Int ?? 100
+                    
+                    // Design Cap (SMC Preferred)
                     self.designCapacity = smcInfo["DesignCapacity"] as? Int ?? iokitInfo["DesignCapacity"] as? Int ?? 100
                     self.cycleCount = smcInfo["CycleCount"] as? Int ?? iokitInfo["CycleCount"] as? Int ?? 0
                     
@@ -759,6 +816,17 @@ class BatteryInfo: ObservableObject {
                     
                     // Temperature (SMC Preferred)
                     self.temperature = smcInfo["Temperature"] as? Double ?? 0
+                    
+                    // Thermal Pressure (Direct Read)
+                    let pressure = ThermalPressureReader.shared.readPressure()
+                    self.thermalPressure = pressure.rawValue
+                    
+                    // CPU Temperature (Async Helper Call)
+                    Helper.instance.getCPUTemperature { cpuTemp in
+                        DispatchQueue.main.async {
+                            self.cpuTemperature = cpuTemp
+                        }
+                    }
                     
                 // Adapter (Infer from power)
                 let sourceState = iokitInfo["PowerSourceState"] as? String ?? "Unknown"
@@ -1227,6 +1295,18 @@ struct SettingsView: View {
                         }
                         
                         HStack(spacing: 12) {
+                            Button(action: {
+                                Helper.instance.installHelper()
+                            }) {
+                                Text("Reinstall Helper")
+                                    .font(.body)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Theme.Colors.tertiaryBackground)
+                                    .foregroundColor(Theme.Colors.textPrimary)
+                                    .cornerRadius(20)
+                            }
+                            .buttonStyle(PlainButtonStyle())
                             Button(action: {}) {
                                 Text("Reset Settings")
                                     .font(.body)
@@ -1388,7 +1468,7 @@ struct SettingsView: View {
                 
                 // Footer
                 HStack {
-                    Text("BatteryPro Free 1.36.2")
+                    Text("BatteryPro Free \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")")
                         .font(.caption)
                         .foregroundColor(Theme.Colors.textSecondary)
                     Spacer()
@@ -1406,106 +1486,7 @@ struct SettingsView: View {
 // MARK: - Energy Use View
 // MARK: - Energy Use View
 // MARK: - Energy Use View
-struct EnergyUseView: View {
-    @State private var lowPowerMode = "Always Off"
-    @State private var backgroundUpdates = false
-    @State private var significantEnergyApps = "Medium Usage"
-    
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                // Header
-                HStack {
-                    Text("Energy Use")
-                        .font(Theme.Fonts.header)
-                        .foregroundColor(Theme.Colors.textPrimary)
-                    Spacer()
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 24)
-                
-                VStack(spacing: 20) {
-                    // Low Power Mode
-                    HStack {
-                        Image(systemName: "battery.50")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                        Text("Low Power Mode")
-                            .font(Theme.Fonts.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                        Image(systemName: "questionmark.circle")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .font(.caption)
-                        Spacer()
-                        
-                        Picker("", selection: $lowPowerMode) {
-                            Text("Always Off").tag("Always Off")
-                            Text("Always On").tag("Always On")
-                            Text("On Battery").tag("On Battery")
-                        }
-                        .pickerStyle(MenuPickerStyle())
-                        .frame(width: 120)
-                    }
-                    .padding(Theme.Layout.padding)
-                    .cardStyle()
-                    
-                    // Background Dashboard Updates
-                    HStack {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                        Text("Background Dashboard Updates")
-                            .font(Theme.Fonts.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                        Image(systemName: "questionmark.circle")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .font(.caption)
-                        Spacer()
-                        
-                        Toggle("", isOn: $backgroundUpdates)
-                            .labelsHidden()
-                            .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
-                    }
-                    .padding(Theme.Layout.padding)
-                    .cardStyle()
-                    
-                    // Apps Using Significant Energy
-                    HStack {
-                        Image(systemName: "bolt.fill")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                        Text("Apps Using Significant Energy")
-                            .font(Theme.Fonts.body)
-                            .fontWeight(.medium)
-                            .foregroundColor(Theme.Colors.textPrimary)
-                        
-                        Image(systemName: "questionmark.circle")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .font(.caption)
-                        
-                        Spacer()
-                        
-                        HStack {
-                            Text("show above:")
-                                .font(.caption)
-                                .foregroundColor(Theme.Colors.textSecondary)
-                            Picker("", selection: $significantEnergyApps) {
-                                Text("Low Usage").tag("Low Usage")
-                                Text("Medium Usage").tag("Medium Usage")
-                                Text("High Usage").tag("High Usage")
-                            }
-                            .pickerStyle(MenuPickerStyle())
-                            .frame(width: 140)
-                        }
-                    }
-                    .padding(Theme.Layout.padding)
-                    .cardStyle()
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 40)
-            }
-        }
-    }
-}
+
 
 // MARK: - Schedule View
 struct ScheduleView: View {
@@ -1655,15 +1636,39 @@ struct WidgetView<Content: View>: View {
 // MARK: - Charge Control View
 struct ChargeControlView: View {
     @ObservedObject private var presenter = SMCPresenter.shared
-    @State private var dischargeEnabled = false // Automatic Discharge (placeholder)
-    @State private var sailingModeEnabled: Bool
-    @State private var heatProtectionEnabled: Bool
-    @State private var calibrationEnabled: Bool
+    
+    // UI State mirrors of Persistence
+    @State private var dischargeEnabled = false
+    @State private var dischargeTarget = 50
+    @State private var sailingModeEnabled = false
+    @State private var sailingModeDifference = 5
+    @State private var heatProtectionEnabled = false
+    @State private var calibrationEnabled = false
+    @State private var calibrationStep = 0
+    
+    // Timer for UI refresh
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     init() {
+        // Init with current values
+        _dischargeEnabled = State(initialValue: PersistanceManager.instance.isDischarging)
+        _dischargeTarget = State(initialValue: PersistanceManager.instance.dischargeTarget)
         _sailingModeEnabled = State(initialValue: PersistanceManager.instance.sailingModeEnabled)
+        _sailingModeDifference = State(initialValue: PersistanceManager.instance.sailingModeDifference)
         _heatProtectionEnabled = State(initialValue: PersistanceManager.instance.heatProtectionEnabled)
         _calibrationEnabled = State(initialValue: PersistanceManager.instance.calibrationModeEnabled)
+        _calibrationStep = State(initialValue: PersistanceManager.instance.calibrationStep)
+    }
+    
+    func refreshState() {
+        // Sync UI with Persistence (which is updated by AppDelegate/Helper)
+        if dischargeEnabled != PersistanceManager.instance.isDischarging { dischargeEnabled = PersistanceManager.instance.isDischarging }
+        if dischargeTarget != PersistanceManager.instance.dischargeTarget { dischargeTarget = PersistanceManager.instance.dischargeTarget }
+        if sailingModeEnabled != PersistanceManager.instance.sailingModeEnabled { sailingModeEnabled = PersistanceManager.instance.sailingModeEnabled }
+        if sailingModeDifference != PersistanceManager.instance.sailingModeDifference { sailingModeDifference = PersistanceManager.instance.sailingModeDifference }
+        if heatProtectionEnabled != PersistanceManager.instance.heatProtectionEnabled { heatProtectionEnabled = PersistanceManager.instance.heatProtectionEnabled }
+        if calibrationEnabled != PersistanceManager.instance.calibrationModeEnabled { calibrationEnabled = PersistanceManager.instance.calibrationModeEnabled }
+        if calibrationStep != PersistanceManager.instance.calibrationStep { calibrationStep = PersistanceManager.instance.calibrationStep }
     }
     
     var body: some View {
@@ -1678,6 +1683,9 @@ struct ChargeControlView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
+                .onReceive(timer) { _ in
+                    refreshState()
+                }
                 
                 VStack(spacing: 20) {
                     // 1. Charge Limit
@@ -1689,9 +1697,7 @@ struct ChargeControlView: View {
                                 .font(Theme.Fonts.body)
                                 .fontWeight(.medium)
                                 .foregroundColor(Theme.Colors.textPrimary)
-                            Image(systemName: "questionmark.circle")
-                                .foregroundColor(Theme.Colors.textSecondary)
-                                .font(.caption)
+                            InfoIcon(text: "Stops charging when the battery reaches this percentage to extend battery lifespan.")
                             Spacer()
                             
                             HStack(spacing: 4) {
@@ -1728,7 +1734,7 @@ struct ChargeControlView: View {
                     .padding(Theme.Layout.padding)
                     .cardStyle()
                     
-                    // 1.5 Manual Bypass (New)
+                    // 1.5 Manual Bypass
                     HStack {
                          Image(systemName: "powerplug.fill")
                              .foregroundColor(Theme.Colors.textSecondary)
@@ -1745,32 +1751,62 @@ struct ChargeControlView: View {
                          ))
                          .labelsHidden()
                          .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
+                         .help("Powered directly from the adapter. The battery is neither charged nor discharged.")
                     }
                     .padding(Theme.Layout.padding)
                     .cardStyle()
                     
-                    // 2. Automatic Discharge (Unlocked)
-                    HStack {
-                        Image(systemName: "bolt.badge.automatic.fill")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                        Text("Automatic Discharge")
-                             .font(Theme.Fonts.body)
-                             .fontWeight(.medium)
-                             .foregroundColor(Theme.Colors.textPrimary)
-                        Image(systemName: "questionmark.circle")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .font(.caption)
-                        Spacer()
+                    // 2. Automatic Discharge
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "bolt.badge.automatic.fill")
+                                .foregroundColor(Theme.Colors.textSecondary)
+                            Text("Automatic Discharge")
+                                 .font(Theme.Fonts.body)
+                                 .fontWeight(.medium)
+                                 .foregroundColor(Theme.Colors.textPrimary)
+                            InfoIcon(text: "Discharges the battery to the target percentage, then holds it there.")
+                            Spacer()
                         
-                        Toggle("", isOn: $dischargeEnabled)
+                            Toggle("", isOn: Binding(
+                                get: { dischargeEnabled },
+                                set: { val in
+                                    dischargeEnabled = val
+                                    if val {
+                                        Helper.instance.startDischarge(to: dischargeTarget)
+                                    } else {
+                                        Helper.instance.stopDischarge()
+                                    }
+                                }
+                            ))
                             .labelsHidden()
                             .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
+                        }
+                        
+                        if dischargeEnabled {
+                            Divider().background(Theme.Colors.tertiaryBackground)
+                            HStack {
+                                Text("Target: \(dischargeTarget)%")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                Spacer()
+                            }
+                            Slider(value: Binding(
+                                get: { Double(dischargeTarget) },
+                                set: { val in
+                                    dischargeTarget = Int(val)
+                                    PersistanceManager.instance.dischargeTarget = Int(val)
+                                    PersistanceManager.instance.save()
+                                }
+                            ), in: 0...100, step: 1)
+                            .accentColor(Theme.Colors.accent)
+                        }
                     }
                     .padding(Theme.Layout.padding)
                     .cardStyle()
                     
                     // 3. Drift Mode
-                    VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "sailboat.fill")
                                 .foregroundColor(Theme.Colors.textSecondary)
@@ -1778,29 +1814,45 @@ struct ChargeControlView: View {
                                 .font(Theme.Fonts.body)
                                 .fontWeight(.medium)
                                 .foregroundColor(Theme.Colors.textPrimary)
-                            Image(systemName: "questionmark.circle")
-                                .foregroundColor(Theme.Colors.textSecondary)
-                                .font(.caption)
+                            InfoIcon(text: "Allows the battery level to drop by a set amount (Drift Range) before recharging, reducing micro-cycles.")
                             Spacer()
                             
-                            Toggle("", isOn: $sailingModeEnabled)
-                                .labelsHidden()
-                                .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
+                            Toggle("", isOn: Binding(
+                                get: { sailingModeEnabled },
+                                set: { val in
+                                    sailingModeEnabled = val
+                                    PersistanceManager.instance.sailingModeEnabled = val
+                                    PersistanceManager.instance.save()
+                                }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                         }
-                        .padding(Theme.Layout.padding)
                         
-                        Divider().background(Theme.Colors.tertiaryBackground)
-                        
-                        // Status/Desc
-                        HStack {
+                        if sailingModeEnabled {
+                            Divider().background(Theme.Colors.tertiaryBackground)
+                            HStack {
+                                Text("Drift Range: \(sailingModeDifference)%")
+                                    .font(.caption)
+                                    .foregroundColor(Theme.Colors.textSecondary)
+                                Spacer()
+                            }
+                             Slider(value: Binding(
+                                get: { Double(sailingModeDifference) },
+                                set: { val in
+                                    sailingModeDifference = Int(val)
+                                    PersistanceManager.instance.sailingModeDifference = Int(val)
+                                    PersistanceManager.instance.save()
+                                }
+                            ), in: 1...15, step: 1)
+                            .accentColor(Theme.Colors.accent)
+                             
                             Text(sailingModeEnabled ? "Drift Mode is active." : "Drift Mode deactivated.")
                                 .font(.caption)
                                 .foregroundColor(Theme.Colors.textSecondary)
-                            Spacer()
                         }
-                        .padding(Theme.Layout.padding)
-                        .background(Theme.Colors.tertiaryBackground.opacity(0.5))
                     }
+                    .padding(Theme.Layout.padding)
                     .cardStyle()
                     
                     // 4. Thermal Guard
@@ -1812,12 +1864,17 @@ struct ChargeControlView: View {
                                 .font(Theme.Fonts.body)
                                 .fontWeight(.medium)
                                 .foregroundColor(Theme.Colors.textPrimary)
-                            Image(systemName: "questionmark.circle")
-                                .foregroundColor(Theme.Colors.textSecondary)
-                                .font(.caption)
+                            InfoIcon(text: "Pauses charging if the battery temperature exceeds the safety threshold.")
                             Spacer()
                             
-                            Toggle("", isOn: $heatProtectionEnabled)
+                            Toggle("", isOn: Binding(
+                                get: { heatProtectionEnabled },
+                                set: { val in
+                                    heatProtectionEnabled = val
+                                    PersistanceManager.instance.heatProtectionEnabled = val
+                                    PersistanceManager.instance.save()
+                                }
+                            ))
                                 .labelsHidden()
                                 .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                         }
@@ -1837,7 +1894,7 @@ struct ChargeControlView: View {
                     }
                     .cardStyle()
                     
-                    // 5. Calibration Mode (Unlocked)
+                    // 5. Calibration Mode
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Image(systemName: "slider.horizontal.3")
@@ -1846,17 +1903,21 @@ struct ChargeControlView: View {
                                  .font(Theme.Fonts.body)
                                  .fontWeight(.medium)
                                  .foregroundColor(Theme.Colors.textPrimary)
-                            Image(systemName: "questionmark.circle")
-                                .foregroundColor(Theme.Colors.textSecondary)
-                                .font(.caption)
+                            InfoIcon(text: "Recalibrates the battery health sensors by performing a full Charge-Discharge-Charge cycle.")
+
                             Spacer()
                             
                             Button(action: {
-                                // Start Calibration Logic
-                                calibrationEnabled.toggle()
+                                if calibrationEnabled {
+                                    Helper.instance.stopCalibration()
+                                    calibrationEnabled = false
+                                } else {
+                                    Helper.instance.startCalibration()
+                                    calibrationEnabled = true
+                                }
                             }) {
                                 HStack {
-                                    Image(systemName: "play.fill")
+                                    Image(systemName: calibrationEnabled ? "stop.fill" : "play.fill")
                                         .font(.caption)
                                     Text(calibrationEnabled ? "Stop Calibration" : "Start Calibration")
                                 }
@@ -1865,21 +1926,20 @@ struct ChargeControlView: View {
                                 .background(Theme.Colors.tertiaryBackground)
                                 .foregroundColor(Theme.Colors.textSecondary)
                                 .cornerRadius(6)
+                                .contentShape(Rectangle()) // Makes the whole area clickable
                             }
                             .buttonStyle(PlainButtonStyle())
                         }
                         
                         // Calibration Steps Visualization
                         HStack(spacing: 0) {
-                            CalibrationStep(icon: "battery.100", label: "Charge to\n100%", active: true)
+                            CalibrationStep(icon: "battery.100", label: "Charge to\n100%", active: calibrationStep == 1)
                             ArrowView()
-                            CalibrationStep(icon: "battery.0", label: "Discharge\nto 10%", active: false)
+                            CalibrationStep(icon: "battery.0", label: "Discharge\nto 15%", active: calibrationStep == 2)
                             ArrowView()
-                            CalibrationStep(icon: "battery.100", label: "Charge to\n100%", active: false)
+                            CalibrationStep(icon: "battery.100", label: "Charge to\n100%", active: calibrationStep == 3)
                             ArrowView()
-                            CalibrationStep(icon: "pause.rectangle", label: "Hold for\n1h", active: false)
-                            ArrowView()
-                            CalibrationStep(icon: "battery.75", label: "Discharge\nto 88%", active: false)
+                            CalibrationStep(icon: "checkmark.circle", label: "Ready", active: calibrationStep == 0 && !calibrationEnabled)
                         }
                         .padding(.vertical, 12)
                         .frame(maxWidth: .infinity)
@@ -1888,7 +1948,7 @@ struct ChargeControlView: View {
                         
                         HStack {
                             Spacer()
-                            Text("Last Calibration: -")
+                            Text(calibrationEnabled ? "Calibrating (Step \(calibrationStep))..." : "Last Calibration: -")
                                 .font(.caption)
                                 .foregroundColor(Theme.Colors.textSecondary)
                         }
@@ -1900,6 +1960,31 @@ struct ChargeControlView: View {
                 .padding(.horizontal, 24)
                 .padding(.bottom, 40)
             }
+        }
+    }
+}
+
+// MARK: - Reusable Components
+
+struct InfoIcon: View {
+    let text: String
+    @State private var showPopover = false
+    
+    var body: some View {
+        Button(action: { showPopover.toggle() }) {
+            Image(systemName: "questionmark.circle")
+                .foregroundColor(Theme.Colors.textSecondary)
+                .font(.caption)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .contentShape(Circle()) // Hit test
+        .help(text) // Native hover tooltip
+        .popover(isPresented: $showPopover, arrowEdge: .bottom) {
+            Text(text)
+                .font(Theme.Fonts.body)
+                .padding()
+                .frame(width: 250)
+                .multilineTextAlignment(.leading)
         }
     }
 }
@@ -2371,7 +2456,21 @@ struct SleepBehaviorView: View {
     @State private var disableSleepUntilLimit = false
     @State private var stopChargingWhenSleeping = false
     @State private var stopChargingAppClosed = false
-    @State private var turnDisplayOff = false
+    
+    // Timer for UI refresh
+    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    
+    init() {
+        _disableSleepUntilLimit = State(initialValue: PersistanceManager.instance.disableSleepUntilChargeLimit)
+        _stopChargingWhenSleeping = State(initialValue: PersistanceManager.instance.stopChargingWhenSleeping)
+        _stopChargingAppClosed = State(initialValue: PersistanceManager.instance.stopChargingWhenAppClosed)
+    }
+    
+    func refreshState() {
+        if disableSleepUntilLimit != PersistanceManager.instance.disableSleepUntilChargeLimit { disableSleepUntilLimit = PersistanceManager.instance.disableSleepUntilChargeLimit }
+        if stopChargingWhenSleeping != PersistanceManager.instance.stopChargingWhenSleeping { stopChargingWhenSleeping = PersistanceManager.instance.stopChargingWhenSleeping }
+        if stopChargingAppClosed != PersistanceManager.instance.stopChargingWhenAppClosed { stopChargingAppClosed = PersistanceManager.instance.stopChargingWhenAppClosed }
+    }
     
     var body: some View {
         ScrollView {
@@ -2385,6 +2484,7 @@ struct SleepBehaviorView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
+                .onReceive(timer) { _ in refreshState() }
                 
                 VStack(spacing: 20) {
                     // Disable Sleep Card
@@ -2419,9 +2519,18 @@ struct SleepBehaviorView: View {
                                     .frame(width: 20)
                                 Text("Disable Sleep until Charge Limit (optional)")
                                 Spacer()
-                                Toggle("", isOn: $disableSleepUntilLimit)
-                                    .labelsHidden()
-                                    .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
+                                Toggle("", isOn: Binding(
+                                    get: { disableSleepUntilLimit },
+                                    set: { val in
+                                        disableSleepUntilLimit = val
+                                        PersistanceManager.instance.disableSleepUntilChargeLimit = val
+                                        PersistanceManager.instance.save()
+                                        // Trigger check immediately
+                                        Helper.instance.checkSleepAssertion()
+                                    }
+                                ))
+                                .labelsHidden()
+                                .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                             }
                         }
                         .font(.body)
@@ -2462,14 +2571,19 @@ struct SleepBehaviorView: View {
                             .font(Theme.Fonts.body)
                             .fontWeight(.medium)
                             .foregroundColor(Theme.Colors.textPrimary)
-                        Image(systemName: "questionmark.circle")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .font(.caption)
+                        InfoIcon(text: "Pauses charging when the system goes to sleep to safely store the battery.")
                         Spacer()
                         
-                        Toggle("", isOn: $stopChargingWhenSleeping)
-                            .labelsHidden()
-                            .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
+                        Toggle("", isOn: Binding(
+                             get: { stopChargingWhenSleeping },
+                             set: { val in
+                                 stopChargingWhenSleeping = val
+                                 PersistanceManager.instance.stopChargingWhenSleeping = val
+                                 PersistanceManager.instance.save()
+                             }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                     }
                     .padding(Theme.Layout.padding)
                     .cardStyle()
@@ -2482,14 +2596,19 @@ struct SleepBehaviorView: View {
                             .font(Theme.Fonts.body)
                             .fontWeight(.medium)
                             .foregroundColor(Theme.Colors.textPrimary)
-                        Image(systemName: "questionmark.circle")
-                            .foregroundColor(Theme.Colors.textSecondary)
-                            .font(.caption)
+                        InfoIcon(text: "Ensures charging is paused if you quit BatteryPro, preventing overcharging.")
                         Spacer()
                         
-                        Toggle("", isOn: $stopChargingAppClosed)
-                            .labelsHidden()
-                            .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
+                        Toggle("", isOn: Binding(
+                             get: { stopChargingAppClosed },
+                             set: { val in
+                                 stopChargingAppClosed = val
+                                 PersistanceManager.instance.stopChargingWhenAppClosed = val
+                                 PersistanceManager.instance.save()
+                             }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
                     }
                     .padding(Theme.Layout.padding)
                     .cardStyle()
@@ -2818,5 +2937,164 @@ struct OnboardingOverlay: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom) // Align to bottom
         .transition(.move(edge: .bottom).combined(with: .opacity))
         .zIndex(100)
+    }
+}
+
+// MARK: - Energy Monitor View
+struct EnergyMonitorView: View {
+    // Bind to Persistence
+    @State private var lowPowerModePolicy: Int = PersistanceManager.instance.lowPowerModePolicy
+    @State private var backgroundUpdates: Bool = PersistanceManager.instance.backgroundUpdates
+    @State private var energyThreshold: Int = PersistanceManager.instance.energyThreshold
+    
+    // Timer for significant apps update
+    @State private var significantApps: [String] = [] // Placeholder for now
+    
+    var body: some View {
+        ScrollView {
+        VStack(alignment: .leading, spacing: 20) {
+            
+            // Header
+            Text("Energy Use")
+                .font(Theme.Fonts.header)
+                .foregroundColor(Theme.Colors.textPrimary)
+            
+            VStack(spacing: 0) {
+                
+                // Low Power Mode
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "battery.100")
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Text("Low Power Mode")
+                            .foregroundColor(Theme.Colors.textPrimary)
+                        InfoIcon(text: "Control when Low Power Mode is activated.\\n\\nAlways Off: Never enable Low Power Mode.\\nAlways On: Keep Low Power Mode enabled.\\nAuto: Enable Low Power Mode when on battery.")
+                    }
+                    Spacer()
+                    Picker("", selection: $lowPowerModePolicy) {
+                        Text("Always Off").tag(0)
+                        Text("Always On").tag(1)
+                        Text("Auto").tag(2)
+                    }
+                    .pickerStyle(MenuPickerStyle())
+                    .frame(width: 140)
+                    .onChange(of: lowPowerModePolicy) { newValue in
+                        PersistanceManager.instance.lowPowerModePolicy = newValue
+                        PersistanceManager.instance.save()
+                        // Trigget helper update
+                        updateLowPowerMode(policy: newValue)
+                    }
+                }
+                .padding(Theme.Layout.padding)
+                
+                Divider().background(Theme.Colors.tertiaryBackground)
+                
+                // Background Dashboard Updates
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Text("Background Dashboard Updates")
+                            .foregroundColor(Theme.Colors.textPrimary)
+                        InfoIcon(text: "Continue updating the dashboard and collecting stats even when the main window is closed.\\n\\nDisabling this saves energy but graphs might have gaps.")
+                    }
+                    Spacer()
+                    Toggle("", isOn: $backgroundUpdates)
+                        .toggleStyle(SwitchToggleStyle(tint: Theme.Colors.accent))
+                        .onChange(of: backgroundUpdates) { newValue in
+                            PersistanceManager.instance.backgroundUpdates = newValue
+                            PersistanceManager.instance.save()
+                        }
+                }
+                .padding(Theme.Layout.padding)
+                
+                Divider().background(Theme.Colors.tertiaryBackground)
+                
+                // Significant Energy Apps
+                HStack {
+                    HStack(spacing: 8) {
+                        Image(systemName: "bolt.fill")
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        Text("Apps Using Significant Energy")
+                            .foregroundColor(Theme.Colors.textPrimary)
+                         InfoIcon(text: "Identify applications consuming high energy resources.\\n\\nSelect the threshold for highlighting apps in the menu bar and dashboard.")
+                    }
+                    Spacer()
+                    
+                    HStack {
+                        Text("show above:")
+                            .font(Theme.Fonts.caption)
+                            .foregroundColor(Theme.Colors.textSecondary)
+                        
+                        Picker("", selection: $energyThreshold) {
+                            Text("Low Usage").tag(0)
+                            Text("Medium Usage").tag(1)
+                            Text("High Usage").tag(2)
+                        }
+                        .pickerStyle(MenuPickerStyle())
+                        .frame(width: 140)
+                        .onChange(of: energyThreshold) { newValue in
+                            PersistanceManager.instance.energyThreshold = newValue
+                            PersistanceManager.instance.save()
+                        }
+                    }
+                }
+                .padding(Theme.Layout.padding)
+                
+            }
+            .background(Theme.Colors.secondaryBackground)
+            .cornerRadius(Theme.Layout.cornerRadius)
+            .overlay(
+                 RoundedRectangle(cornerRadius: Theme.Layout.cornerRadius)
+                     .stroke(Theme.Colors.cardBorder, lineWidth: 1)
+            )
+            
+            // Placeholder for the Apps List (To be implemented)
+            VStack(alignment: .leading) {
+                Text("Detected Apps (Energy Impact > \(PersistanceManager.instance.energyThreshold == 0 ? "5" : (PersistanceManager.instance.energyThreshold == 1 ? "20" : "50")))")
+                    .font(Theme.Fonts.subheadline)
+                    .foregroundColor(Theme.Colors.textSecondary)
+                    .padding(.top)
+                
+                if significantApps.isEmpty {
+                    Text("No significant energy usage detected.")
+                        .font(Theme.Fonts.body)
+                        .foregroundColor(Theme.Colors.textSecondary)
+                        .italic()
+                } else {
+                    ForEach(significantApps, id: \.self) { app in
+                        Text(app)
+                            .font(Theme.Fonts.body)
+                            .foregroundColor(Theme.Colors.textPrimary)
+                    }
+                }
+            }
+            
+            Spacer()
+        }
+        .padding(24)
+        }
+        .onAppear {
+            // Initial sync
+            lowPowerModePolicy = PersistanceManager.instance.lowPowerModePolicy
+            backgroundUpdates = PersistanceManager.instance.backgroundUpdates
+            energyThreshold = PersistanceManager.instance.energyThreshold
+            refreshApps()
+        }
+    }
+    
+    func refreshApps() {
+        Helper.instance.getTopEnergyConsumers { apps in
+            DispatchQueue.main.async {
+                self.significantApps = apps
+            }
+        }
+    }
+    
+    func updateLowPowerMode(policy: Int) {
+        // Trigger logic update in Helper/AppDelegate immediately if needed, 
+        // but main loop in AppDelegate will catch it eventually.
+        // We can force a check.
+        // Helper.instance.checkEnergyPolicy() // To be implemented
     }
 }

@@ -7,8 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		21A52C6576244109BB5EE45F /* MainWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A52C6576244109BB5EE460 /* MainWindowView.swift */; };
+		21A52C6576244109BB5EE45F /*- [x] Fix Code Signing Mismatch (Sign to Run Locally vs Apple Dev) <!-- id: 17 -->*/ = {isa = PBXBuildFile; fileRef = 21A52C6576244109BB5EE460 /* MainWindowView.swift */; };
 		505E96C92586211600DAA405 /* LaunchAtLogin in Frameworks */ = {isa = PBXBuildFile; productRef = 505E96C82586211600DAA405 /* LaunchAtLogin */; };
+		566179AF2F18543E0085B903 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 566179A32F18543E0085B903 /* Assets.xcassets */; };
+		566179B22F18543E0085B903 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 566179A82F18543E0085B903 /* Localizable.strings */; };
+		566179B52F18543E0085B903 /* Helper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 566179A52F18543E0085B903 /* Helper.swift */; };
+		566179B72F18543E0085B903 /* PerformanceControlView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 566179AC2F18543E0085B903 /* PerformanceControlView.swift */; };
 		9224A08723F1F70600961AC4 /* com.stephenlovino.BattProHelper in CopyFiles */ = {isa = PBXBuildFile; fileRef = 9283741823F1F34400B8AE7A /* com.stephenlovino.BattProHelper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		927DBFC923F5478E00F8BF0D /* HelperToolProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 927DBFC823F5478E00F8BF0D /* HelperToolProtocol.swift */; };
 		927DBFCA23F5478E00F8BF0D /* HelperToolProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 927DBFC823F5478E00F8BF0D /* HelperToolProtocol.swift */; };
@@ -16,12 +20,10 @@
 		928674C025D07BA300EC79C1 /* PersistanceManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 928674BF25D07BA300EC79C1 /* PersistanceManager.swift */; };
 		92981EDB23F08D9B00C05424 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92981EDA23F08D9B00C05424 /* AppDelegate.swift */; };
 		92981EDD23F08D9B00C05424 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92981EDC23F08D9B00C05424 /* ContentView.swift */; };
-		92981EDF23F08D9C00C05424 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 92981EDE23F08D9C00C05424 /* Assets.xcassets */; };
 		92981EE223F08D9C00C05424 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 92981EE123F08D9C00C05424 /* Preview Assets.xcassets */; };
 		92981EE523F08D9C00C05424 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 92981EE323F08D9C00C05424 /* Main.storyboard */; };
 		92ACA12B23F5F822003512DC /* HelperTool.swift in Sources */ = {isa = PBXBuildFile; fileRef = 927DBFCB23F54C2C00F8BF0D /* HelperTool.swift */; };
 		92ACA12E23F5F861003512DC /* SMC.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92ACA12D23F5F861003512DC /* SMC.swift */; };
-		92E24B4123F6DC0D00BE41ED /* Helper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92E24B4023F6DC0D00BE41ED /* Helper.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -39,6 +41,18 @@
 
 /* Begin PBXFileReference section */
 		21A52C6576244109BB5EE460 /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
+		5661799E2F18543E0085B903 /* Localizable.strings */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; path = Localizable.strings; sourceTree = "<group>"; };
+		566179A02F18543E0085B903 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		566179A22F18543E0085B903 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		566179A32F18543E0085B903 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		566179A42F18543E0085B903 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		566179A52F18543E0085B903 /* Helper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Helper.swift; sourceTree = "<group>"; };
+		566179A62F18543E0085B903 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		566179A72F18543E0085B903 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		566179A92F18543E0085B903 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		566179AB2F18543E0085B903 /* MainWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainWindowView.swift; sourceTree = "<group>"; };
+		566179AC2F18543E0085B903 /* PerformanceControlView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceControlView.swift; sourceTree = "<group>"; };
+		566179AD2F18543E0085B903 /* PersistanceManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistanceManager.swift; sourceTree = "<group>"; };
 		927DBFC623F533FB00F8BF0D /* Helper-Launchd.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Helper-Launchd.plist"; sourceTree = "<group>"; };
 		927DBFC823F5478E00F8BF0D /* HelperToolProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperToolProtocol.swift; sourceTree = "<group>"; };
 		927DBFCB23F54C2C00F8BF0D /* HelperTool.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HelperTool.swift; sourceTree = "<group>"; };
@@ -69,6 +83,42 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		5661799F2F18543E0085B903 /* extracted_strings */ = {
+			isa = PBXGroup;
+			children = (
+				5661799E2F18543E0085B903 /* Localizable.strings */,
+			);
+			name = extracted_strings;
+			path = Base.lproj/extracted_strings;
+			sourceTree = "<group>";
+		};
+		566179A12F18543E0085B903 /* Preview Content */ = {
+			isa = PBXGroup;
+			children = (
+				566179A02F18543E0085B903 /* Preview Assets.xcassets */,
+			);
+			path = "Preview Content";
+			sourceTree = "<group>";
+		};
+		566179AE2F18543E0085B903 /* BatteryPro */ = {
+			isa = PBXGroup;
+			children = (
+				5661799F2F18543E0085B903 /* extracted_strings */,
+				566179A12F18543E0085B903 /* Preview Content */,
+				566179A22F18543E0085B903 /* AppDelegate.swift */,
+				566179A32F18543E0085B903 /* Assets.xcassets */,
+				566179A42F18543E0085B903 /* ContentView.swift */,
+				566179A52F18543E0085B903 /* Helper.swift */,
+				566179A62F18543E0085B903 /* Info.plist */,
+				566179A82F18543E0085B903 /* Localizable.strings */,
+				566179AA2F18543E0085B903 /* Main.storyboard */,
+				566179AB2F18543E0085B903 /* MainWindowView.swift */,
+				566179AC2F18543E0085B903 /* PerformanceControlView.swift */,
+				566179AD2F18543E0085B903 /* PersistanceManager.swift */,
+			);
+			path = BatteryPro;
+			sourceTree = "<group>";
+		};
 		927DBFC723F545AF00F8BF0D /* Common */ = {
 			isa = PBXGroup;
 			children = (
@@ -92,6 +142,7 @@
 		92981ECE23F08D9B00C05424 = {
 			isa = PBXGroup;
 			children = (
+				566179AE2F18543E0085B903 /* BatteryPro */,
 				927DBFC723F545AF00F8BF0D /* Common */,
 				92981ED923F08D9B00C05424 /* BatteryPro */,
 				9283741923F1F34400B8AE7A /* com.stephenlovino.BattProHelper */,
@@ -158,7 +209,6 @@
 				92981ED423F08D9B00C05424 /* Frameworks */,
 				92981ED523F08D9B00C05424 /* Resources */,
 				9224A08623F1F6E300961AC4 /* CopyFiles */,
-				92E24B4423F847B500BE41ED /* LaunchAtLogin */,
 			);
 			buildRules = (
 			);
@@ -219,32 +269,12 @@
 			files = (
 				92981EE523F08D9C00C05424 /* Main.storyboard in Resources */,
 				92981EE223F08D9C00C05424 /* Preview Assets.xcassets in Resources */,
-				92981EDF23F08D9C00C05424 /* Assets.xcassets in Resources */,
+				566179AF2F18543E0085B903 /* Assets.xcassets in Resources */,
+				566179B22F18543E0085B903 /* Localizable.strings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		92E24B4423F847B500BE41ED /* LaunchAtLogin */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = LaunchAtLogin;
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${BUILT_PRODUCTS_DIR}/LaunchAtLogin_LaunchAtLogin.bundle/Contents/Resources/copy-helper-swiftpm.sh\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		9283741423F1F34400B8AE7A /* Sources */ = {
@@ -267,13 +297,30 @@
 				92981EDD23F08D9B00C05424 /* ContentView.swift in Sources */,
 				21A52C6576244109BB5EE45F /* MainWindowView.swift in Sources */,
 				92981EDB23F08D9B00C05424 /* AppDelegate.swift in Sources */,
-				92E24B4123F6DC0D00BE41ED /* Helper.swift in Sources */,
+				566179B52F18543E0085B903 /* Helper.swift in Sources */,
+				566179B72F18543E0085B903 /* PerformanceControlView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXVariantGroup section */
+		566179A82F18543E0085B903 /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				566179A72F18543E0085B903 /* en */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+		566179AA2F18543E0085B903 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				566179A92F18543E0085B903 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
 		92981EE323F08D9C00C05424 /* Main.storyboard */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -289,17 +336,17 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD)";
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 10;
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 11;
 				DEVELOPMENT_TEAM = AA5BDAC5T8;
 				ENABLE_HARDENED_RUNTIME = YES;
 				EXCLUDED_ARCHS = "";
 				"EXCLUDED_ARCHS[sdk=*]" = "";
 				INFOPLIST_FILE = "com.davidwernhart.Helper/Helper-Info.plist";
 				MACOSX_DEPLOYMENT_TARGET = 11.1;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.3.0;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__TEXT,
@@ -323,16 +370,16 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = "$(ARCHS_STANDARD)";
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = AA5BDAC5T8;
 				ENABLE_HARDENED_RUNTIME = YES;
 				EXCLUDED_ARCHS = "";
 				INFOPLIST_FILE = "com.stephenlovino.BattProHelper/Helper-Info.plist";
 				MACOSX_DEPLOYMENT_TARGET = 11.1;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.3.0;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__TEXT,
@@ -470,11 +517,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_ASSET_PATHS = "\"BatteryPro/Preview Content\"";
 				DEVELOPMENT_TEAM = AA5BDAC5T8;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -486,7 +533,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.1;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.stephenlovino.BatteryPro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -498,9 +545,9 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_STYLE = Manual;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_ASSET_PATHS = "\"BatteryPro/Preview Content\"";
@@ -514,7 +561,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 11.1;
-				MARKETING_VERSION = 1.2.1;
+				MARKETING_VERSION = 1.2.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.stephenlovino.BatteryPro;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -560,7 +607,7 @@
 			repositoryURL = "https://github.com/sindresorhus/LaunchAtLogin";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 4.0.0;
+				minimumVersion = 5.0.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

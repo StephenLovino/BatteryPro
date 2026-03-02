@@ -324,20 +324,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if PersistanceManager.instance.isDischarging {
              let target = PersistanceManager.instance.dischargeTarget
              if Capacity > target {
-                 // Still need to discharge
-                 if !Helper.instance.chargeInhibited {
-                     Helper.instance.disableCharging()
-                     print("DISCHARGE MODE: Disabling charge - Capacity \(Capacity)% > Target \(target)%")
-                 }
-                 Helper.instance.enableSleep()
-                 actionMsg = "DISCHARGING TO \(target)%"
-                 return
+                  // Still need to discharge
+                  Helper.instance.enableActiveDischarge()
+                  Helper.instance.enableSleep()
+                  actionMsg = "DISCHARGING TO \(target)%"
+                  return
              } else {
-                 // Target reached, stop discharging
-                 print("DISCHARGE MODE: Target \(target)% reached. Disabling discharge mode.")
-                 PersistanceManager.instance.isDischarging = false
-                 PersistanceManager.instance.save()
-                 // Continue to normal charge control to maintain this level or charge up
+                  // Target reached, stop discharging
+                  print("DISCHARGE MODE: Target \(target)% reached. Disabling discharge mode.")
+                  PersistanceManager.instance.isDischarging = false
+                  PersistanceManager.instance.save()
+                  Helper.instance.disableActiveDischarge()
+                  // Continue to normal charge control to maintain this level or charge up
              }
         }
         
@@ -406,13 +404,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         case 2: // Discharge to 15%
              actionMsg = "CALIBRATION: DISCHARGING TO 15%"
              if Capacity > 15 {
-                 if !Helper.instance.chargeInhibited { Helper.instance.disableCharging() }
+                 Helper.instance.enableActiveDischarge()
                  Helper.instance.enableSleep()
              } else {
                  // Reached 15%
                  print("CALIBRATION: Reached 15%. Moving to Step 3 (Charge to 100%)")
                  PersistanceManager.instance.calibrationStep = 3
                  PersistanceManager.instance.save()
+                 Helper.instance.disableActiveDischarge()
              }
              
         case 3: // Charge to 100% Again

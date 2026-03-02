@@ -9,7 +9,7 @@
 	<key>CFBundleName</key>
 	<string>com.stephenlovino.BattProHelper</string>
 	<key>CFBundleVersion</key>
-	<string>10</string>
+	<string>22</string>
 	<key>SMAuthorizedClients</key>
 	<array>
 		<string>identifier "com.stephenlovino.BatteryPro" and anchor apple generic and certificate leaf[subject.CN] = "Apple Development: stephenkiri17@gmail.com (YV83D939CN)" and certificate 1[field.1.2.840.113635.100.6.2.1] /* exists */</string>

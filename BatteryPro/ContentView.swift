@@ -161,6 +161,7 @@ struct ContentView: View {
 
     init() {
         Helper.instance.delegate = presenter
+        _isDischarging = State(initialValue: PersistanceManager.instance.isDischarging)
     }
 
     var body: some View {
@@ -219,9 +220,9 @@ struct ContentView: View {
                         Button(action: {
                             isDischarging.toggle()
                             if isDischarging {
-                                Helper.instance.disableCharging()
+                                Helper.instance.startDischarge(to: Int(presenter.value))
                             } else {
-                                Helper.instance.enableCharging()
+                                Helper.instance.stopDischarge()
                             }
                         }) {
                             HStack(spacing: 4) {
@@ -308,7 +309,13 @@ struct ContentView: View {
                 }
                 .frame(width: 450, height: 110)
                 .onAppear {
+                    isDischarging = PersistanceManager.instance.isDischarging
                     NotificationCenter.default.post(name: NSNotification.Name("UpdatePopoverSize"), object: nil, userInfo: ["width": 450, "height": 140])
+                }
+                .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+                    if isDischarging != PersistanceManager.instance.isDischarging {
+                        isDischarging = PersistanceManager.instance.isDischarging
+                    }
                 }
             }
         }

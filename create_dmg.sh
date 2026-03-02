@@ -10,17 +10,23 @@ VOL_NAME="BatteryPro Installer"
 BUILD_DIR="${HOME}/Library/Developer/Xcode/DerivedData"
 
 # 1. Find the built app
-echo "🔍 Searching for built Release app..."
-# Try to find the most recent build (prefer Release, then Debug)
-BUILD_PATH=$(find "${BUILD_DIR}" -name "${PROJECT_NAME}.app" -type d -path "*/Release/*" -not -path "*Index.noindex*" -maxdepth 6 2>/dev/null | head -1)
+if [ -n "$1" ]; then
+    BUILD_PATH="$1"
+    echo "🎯 Using specified app: ${BUILD_PATH}"
+else
+    echo "🔍 Searching for built Release app..."
+    # Try to find the most recent build (prefer Release, then Debug)
+    BUILD_PATH=$(find "${BUILD_DIR}" -name "${PROJECT_NAME}.app" -type d -path "*/Release/*" -not -path "*Index.noindex*" -maxdepth 6 2>/dev/null | head -1)
 
-if [ -z "$BUILD_PATH" ]; then
-    echo "⚠️  Release build not found, checking for any build..."
-    BUILD_PATH=$(find "${BUILD_DIR}" -name "${PROJECT_NAME}.app" -type d -not -path "*Index.noindex*" -maxdepth 6 2>/dev/null | head -1)
+    if [ -z "$BUILD_PATH" ]; then
+        echo "⚠️  Release build not found, checking for any build..."
+        BUILD_PATH=$(find "${BUILD_DIR}" -name "${PROJECT_NAME}.app" -type d -not -path "*Index.noindex*" -maxdepth 6 2>/dev/null | head -1)
+    fi
 fi
 
 if [ -z "$BUILD_PATH" ]; then
-    echo "❌ Error: Could not find built app. Please build the project in Xcode (Product -> Build) first."
+    echo "❌ Error: Could not find built app."
+    echo "Usage: ./create_dmg.sh [path/to/BatteryPro.app]"
     exit 1
 fi
 
@@ -35,8 +41,12 @@ mkdir -p "${STAGING_DIR}"
 
 # Copy App
 echo "©️  Copying ${PROJECT_NAME}.app to staging..."
-# Use -L to dereference symlinks in case the find result is a symlink
-cp -R -L "${BUILD_PATH}" "${STAGING_DIR}/"
+# Use -R to copy recursively, do NOT use -L as it breaks bundle signatures by dereferencing symlinks
+cp -R "${BUILD_PATH}" "${STAGING_DIR}/"
+
+# Clean up any extended attributes (quarantine, etc) from the copy to avoid "Damaged" errors
+echo "🧹 Removing extended attributes from staging..."
+xattr -cr "${STAGING_DIR}/${PROJECT_NAME}.app"
 
 # Verify copy
 if [ ! -f "${STAGING_DIR}/${PROJECT_NAME}.app/Contents/Info.plist" ]; then

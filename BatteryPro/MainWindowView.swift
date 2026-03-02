@@ -227,6 +227,8 @@ struct MainWindowView: View {
                     DashboardView()
                 case .chargeControl, .sailingMode, .heatProtection, .calibration:
                     ChargeControlView()
+                case .performanceControl:
+                    PerformanceControlView()
                 case .sleepBehavior:
                     SleepBehaviorView()
                 case .energyUse:
@@ -348,7 +350,7 @@ struct SidebarView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     
                     MenuGroup(title: "Battery Care", items: [
-                        .chargeControl, .sleepBehavior, .energyUse
+                        .chargeControl, .sleepBehavior, .energyUse, .performanceControl
                     ], selected: $selectedSection, activeOnboardingSection: activeOnboardingSection)
                     
                     MenuGroup(title: "Automations", items: [
@@ -374,6 +376,24 @@ struct SidebarView: View {
                         Image(systemName: "gearshape.circle")
                             .font(.system(size: 20))
                             .foregroundColor(selectedSection == .settings ? Theme.Colors.accent : Theme.Colors.textSecondary)
+                    }
+                    .buttonStyle(PlainButtonStyle()) // Explicitly plain to avoid default button styling
+                    
+                    // Quit Button
+                    Button(action: {
+                        NSApplication.shared.terminate(nil)
+                    }) {
+                        Image(systemName: "power.circle.fill") // Or just power.circle
+                            .font(.system(size: 20))
+                            .foregroundColor(Theme.Colors.textSecondary)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                     .onHover { inside in
+                        if inside {
+                             NSCursor.pointingHand.push()
+                        } else {
+                             NSCursor.pop()
+                        }
                     }
                     
                     Spacer()
@@ -706,6 +726,7 @@ enum NavigationSection: String, CaseIterable {
     case sailingMode = "Drift Mode"
     case heatProtection = "Heat Protection"
     case powerModes = "Power Modes"
+    case performanceControl = "Performance Control"
     case calibration = "Recalibration"
     case sleepBehavior = "Sleep Mode"
     case energyUse = "Energy Monitor"
@@ -723,6 +744,7 @@ enum NavigationSection: String, CaseIterable {
         case .sailingMode: return "sailboat.fill"
         case .heatProtection: return "thermometer.sun.fill"
         case .powerModes: return "bolt.circle.fill"
+        case .performanceControl: return "speedometer"
         case .calibration: return "arrow.triangle.2.circlepath"
         case .sleepBehavior: return "moon.fill"
         case .energyUse: return "leaf.fill"

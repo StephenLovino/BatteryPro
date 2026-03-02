@@ -18,6 +18,25 @@ More information can be found at [Battery University](https://batteryuniversity.
 ## Download
 You can download the app from GitHub: <https://github.com/StephenLovino/BatteryPro/releases>
 
+## Installation Support
+
+Since this app is open-source and not notarized by Apple, you might see a "Damaged" or "Unidentified Developer" warning. This is normal.
+
+**Recommended Fix:**
+1. Move the app to your **Applications** folder.
+2. Open **Terminal** (Cmd+Space, type "Terminal").
+3. Copy and paste this command, then hit Enter:
+   ```bash
+   xattr -cr /Applications/BatteryPro.app
+   ```
+4. You can now open the app normally!
+
+**Alternative Method:**
+Right-click the app and select **Open**, then click **Open** in the confirmation dialog.
+
+> [!NOTE]
+> If the DMG installer gives persistent "Damaged" errors, please download the **BatteryPro.zip** file instead. Unzip it, and manually drag `BatteryPro.app` into your `/Applications` folder.
+
 ## How to use
 When the installation is finished, enter your desired max. charging percentage by clicking on the BatteryPro icon on your menu bar. 
 

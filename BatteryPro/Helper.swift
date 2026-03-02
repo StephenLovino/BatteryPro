@@ -31,6 +31,7 @@ final class Helper {
     public var isInitialized:Bool = false
     
     public var statusString:String = ""
+    public var activeDischargeEnabled: Bool = false
 
 
     lazy var helperToolConnection: NSXPCConnection = {
@@ -231,7 +232,7 @@ final class Helper {
     func setStatusString(){
         // Don't check charging status immediately - trust our internal state
         // checkCharging() can be called separately when needed
-        var sleepDisabled:Bool = !(preventSleepID == nil)
+        let sleepDisabled:Bool = !(preventSleepID == nil)
         statusString = ""
         if(PersistanceManager.instance.oldKey){
             statusString = "BCLM Key Mode. Final charge value can differ by up to 5%"
@@ -543,6 +544,39 @@ final class Helper {
         }
     }
     
+    func toggleHighPowerMode(enabled: Bool, completion: @escaping (Bool) -> Void) {
+        let helper = helperToolConnection.remoteObjectProxyWithErrorHandler {
+            let e = $0 as NSError
+            print("Remote proxy error \(e.code): \(e.localizedDescription)")
+            DispatchQueue.main.async {
+                completion(false)
+            }
+        } as? HelperToolProtocol
+        
+        helper?.setHighPowerMode(enabled: enabled) { success, message in
+            DispatchQueue.main.async {
+                print("High Power Mode toggle result: \(success) - \(message)")
+                completion(success)
+            }
+        }
+    }
+    
+    func checkHighPowerMode(completion: @escaping (Bool) -> Void) {
+        let helper = helperToolConnection.remoteObjectProxyWithErrorHandler {
+            let e = $0 as NSError
+            print("Remote proxy error \(e.code): \(e.localizedDescription)")
+            DispatchQueue.main.async {
+                completion(false)
+            }
+        } as? HelperToolProtocol
+        
+        helper?.getHighPowerMode { isEnabled in
+             DispatchQueue.main.async {
+                 completion(isEnabled)
+             }
+        }
+    }
+    
     func startCalibration() {
         print("Starting battery calibration...")
         PersistanceManager.instance.calibrationModeEnabled = true
@@ -570,7 +604,34 @@ final class Helper {
         print("Stopping discharge...")
         PersistanceManager.instance.isDischarging = false
         PersistanceManager.instance.save()
+        disableActiveDischarge()
         enableCharging()
+    }
+
+    func enableActiveDischarge() {
+        guard !activeDischargeEnabled else { return }
+        print("ENABLING ACTIVE DISCHARGE (Drawing from battery)...")
+        
+        // Ensure charging is inhibited first
+        disableCharging()
+        
+        // Active discharge keys for Apple Silicon and some Intel Macs
+        SMCWriteByte(key: "CHIE", value: 0x01) { _, _ in }
+        SMCWriteByte(key: "CH0I", value: 0x01) { _, _ in }
+        SMCWriteByte(key: "CH0J", value: 0x01) { _, _ in }
+        
+        activeDischargeEnabled = true
+    }
+
+    func disableActiveDischarge() {
+        guard activeDischargeEnabled else { return }
+        print("DISABLING ACTIVE DISCHARGE...")
+        
+        SMCWriteByte(key: "CH0I", value: 0x00) { _, _ in }
+        SMCWriteByte(key: "CH0J", value: 0x00) { _, _ in }
+        SMCWriteByte(key: "CHIE", value: 0x00) { _, _ in }
+        
+        activeDischargeEnabled = false
     }
     
     func getSMCCharge(withReply reply: @escaping (Float)->Void){
@@ -963,7 +1024,7 @@ final class Helper {
                 
                 // Derived Fields
                 var amps = result["Amperage"] as? Double ?? 0
-                var volts = result["Voltage"] as? Double ?? 0
+                let volts = result["Voltage"] as? Double ?? 0
                 
                 // Fix Amperage Sign for Apple Silicon
                 // Experimentally determined: On M1/M2, Negative Amps = Charging

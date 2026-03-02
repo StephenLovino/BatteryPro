@@ -375,7 +375,7 @@ final class HelperTool: NSObject, HelperToolProtocol {
             reply(assertionID)
         }
         else{
-            reply (UInt32(kCFNumberNaN))
+            reply (UInt32(truncating: kCFNumberNaN as NSNumber))
         }
     }
     
@@ -433,6 +433,70 @@ final class HelperTool: NSObject, HelperToolProtocol {
         } catch {
             print("Error executing pmset: \(error)")
             reply(false, "Error: \(error.localizedDescription)")
+        }
+    }
+    
+    func setHighPowerMode(enabled: Bool, withReply reply: @escaping (Bool, String) -> Void) {
+        // High Power Mode: powermode 2
+        // Auto (Normal): powermode 0
+        // Low Power: powermode 1 (We assume "OFF" for High Power means Auto/Normal "0", not Low Power "1")
+        
+        let value = enabled ? "2" : "0" // 2 = High Power, 0 = Auto
+        
+        let task = Process()
+        task.launchPath = "/usr/bin/pmset"
+        task.arguments = ["-a", "powermode", value]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            
+            if task.terminationStatus == 0 {
+                print("Successfully set High Power Mode to \(enabled) (powermode \(value))")
+                reply(true, "Success")
+            } else {
+                print("Failed to set High Power Mode: \(output)")
+                // Common failure: "Not supported" on devices without High Power Mode
+                reply(false, "Failed: \(output)")
+            }
+        } catch {
+            print("Error executing pmset for High Power Mode: \(error)")
+            reply(false, "Error: \(error.localizedDescription)")
+        }
+    }
+    
+    func getHighPowerMode(withReply reply: @escaping (Bool) -> Void) {
+        let task = Process()
+        task.launchPath = "/usr/bin/pmset"
+        task.arguments = ["-g"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        task.standardError = pipe
+        
+        do {
+            try task.run()
+            task.waitUntilExit()
+            
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            
+            // Check for "powermode 2" using regex to handle variable whitespace
+            if output.range(of: "powermode\\s+2", options: .regularExpression) != nil {
+                reply(true)
+            } else {
+                reply(false)
+            }
+        } catch {
+            print("Error checking power mode: \(error)")
+            reply(false)
         }
     }
     // MARK: - Advanced Temperature Monitoring

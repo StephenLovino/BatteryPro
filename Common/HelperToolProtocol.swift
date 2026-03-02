@@ -9,7 +9,7 @@
 import Foundation
 import IOKit.pwr_mgt
 
-let helperVersion: String = "21" //for some reason the integrated version check does not work, so I use this one
+let helperVersion: String = "23" //for some reason the integrated version check does not work, so I use this one
 
 @objc(HelperToolProtocol) protocol HelperToolProtocol {
 //protocol HelperToolProtocol {
@@ -33,6 +33,10 @@ let helperVersion: String = "21" //for some reason the integrated version check 
     
     // Low Power Mode Control
     func setLowPowerMode(enabled: Bool, withReply reply: @escaping (Bool, String) -> Void)
+    
+    // High Power Mode Control (Performance Mode)
+    func setHighPowerMode(enabled: Bool, withReply reply: @escaping (Bool, String) -> Void)
+    func getHighPowerMode(withReply reply: @escaping (Bool) -> Void)
 
     // Comprehensive Battery Status
     func readBatteryStatus(withReply reply: @escaping ([String: Any]) -> Void)
